@@ -74,12 +74,12 @@ label_vertebrae_if_does_not_exist() {
   else
     echo "Not found. Proceeding with automatic labeling."
     # Generate labeled segmentation
+    # TODO: replace with Nathan's TotalSpineSeg
     sct_label_vertebrae -i "${file}".nii.gz -s "${file_seg}".nii.gz -c t2 -qc "${PATH_QC}" -qc-subject "${SUBJECT}"
-    # Rename the output labeled discs file to match the expected name
-    mv "${file_seg}"_labeled_discs.nii.gz "${FILELABEL}".nii.gz
   fi
-  # Generate QC report
-  sct_qc -i "${file}".nii.gz -s "${FILELABEL}".nii.gz -p sct_label_utils -qc "${PATH_QC}" -qc-subject "${SUBJECT}"
+  # Generate labeled segmentation based on disc labels
+  sct_label_vertebrae -i "${file}".nii.gz -s "${file_seg}".nii.gz -discfile "${FILELABEL}".nii.gz -c t2 -qc "${PATH_QC}" -qc-subject "${SUBJECT}"
+  FILELABELVERTEBRAE="${file}"_seg_labeled
 }
 
 segment_if_does_not_exist() {
@@ -141,11 +141,10 @@ segment_if_does_not_exist "${file_t2}"
 file_t2_seg="${FILESEG}"
 # Create labels in the cord at mid-vertebral levels
 label_vertebrae_if_does_not_exist "${file_t2}" "${file_t2_seg}"
-file_label="${FILELABEL}"
+file_label_vert="${FILELABELVERTEBRAE}"
 # Compute average CSA as defined by variable 'vertebral_levels'
-sct_process_segmentation -i "${file_t2_seg}".nii.gz -vertfile "${file_label}".nii.gz \
+sct_process_segmentation -i "${file_t2_seg}".nii.gz -vertfile "${file_label_vert}".nii.gz \
                          -perslice 1 -o "${PATH_RESULTS}"/"${SUBJECT}"_CSA.csv -append 1 -qc "${PATH_QC}"
-
 
 # Go back to parent folder
 cd ..
