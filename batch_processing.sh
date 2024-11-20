@@ -57,7 +57,7 @@ PATH_SCRIPT=$PWD
 # =====================================================================================================================
 
 label_vertebrae_if_does_not_exist() {
-  # This function checks if a manual label file already exists, then:
+  # This function checks if a disc manual label file already exists, then:
   #   - If it does, copy it locally.
   #   - If it doesn't, perform automatic labeling.
   # This allows you to add manual labels on a subject-by-subject basis without disrupting the pipeline.
@@ -82,22 +82,16 @@ label_vertebrae_if_does_not_exist() {
   FILELABELVERTEBRAE="${file}"_seg_labeled
 }
 
-segment_if_does_not_exist() {
+segment_sc_if_does_not_exist() {
   # This function checks if a manual spinal cord segmentation file already exists, then:
   #   - If it does, copy it locally.
   #   - If it doesn't, perform automatic spinal cord segmentation.
   # This allows you to add manual segmentations on a subject-by-subject basis without disrupting the pipeline.
 
   local file="${1}"
-  # Find if modality is 'anat' or 'dwi'
-  if [[ $file == *"_DWI_"* ]]; then
-    modality="dwi"
-  else
-    modality="anat"
-  fi
   # Update global variable with segmentation file name
   FILESEG="${file}"_seg
-  FILESEGMANUAL="${PATH_DATA}"/derivatives/labels/"${SUBJECT}"/"${modality}"/"${FILESEG}".nii.gz
+  FILESEGMANUAL="${PATH_DATA}"/derivatives/labels/"${SUBJECT}"/anat/"${FILESEG}".nii.gz
   echo
   echo "Looking for manual segmentation: ${FILESEGMANUAL}"
   if [[ -e "${FILESEGMANUAL}" ]]; then
@@ -111,6 +105,31 @@ segment_if_does_not_exist() {
   fi
 }
 
+segment_lesion_if_does_not_exist() {
+  # This function checks if a manual MS lesion segmentation file already exists, then:
+  #   - If it does, copy it locally.
+  #   - If it doesn't, perform automatic MS lesion segmentation.
+  # This allows you to add manual segmentations on a subject-by-subject basis without disrupting the pipeline.
+
+  local file="${1}"
+  # Update global variable with segmentation file name
+  FILELESION="${file}"_lesion-seg
+  FILELESIONMANUAL="${PATH_DATA}"/derivatives/labels/"${SUBJECT}"/anat/"${FILELESION}".nii.gz
+  # Create the spinal cord segmentation file name (it has been copied in the previous step)
+  FILESEG="${file}"_seg
+  echo
+  echo "Looking for manual segmentations: ${FILESEGMANUAL}"
+  if [[ -e "${FILELESIONMANUAL}" ]]; then
+    echo "Found! Using manual segmentation."
+    rsync -avzh "${FILELESIONMANUAL}" "${FILELESION}".nii.gz
+    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${FILESEG}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
+  else
+    echo "Not found. Proceeding with automatic segmentation."
+    # Segment spinal cord
+    sct_deepseg -i "${file}".nii.gz -task seg_ms_lesion -o "${FILELESION}".nii.gz
+    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${FILESEG}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
+  fi
+}
 
 # SCRIPT STARTS HERE
 # =====================================================================================================================
@@ -137,7 +156,7 @@ file_t2="${SUBJECT}"_acq-sagCervCube_T2w
 echo "👉 Processing: ${file_t2}"
 # Segment spinal cord (only if it does not exist)
 # Note: we output the soft segmentation for better CSA precision
-segment_if_does_not_exist "${file_t2}"
+segment_sc_if_does_not_exist "${file_t2}"
 file_t2_seg="${FILESEG}"
 # Create labels in the cord at mid-vertebral levels
 label_vertebrae_if_does_not_exist "${file_t2}" "${file_t2_seg}"
@@ -145,6 +164,9 @@ file_label_vert="${FILELABELVERTEBRAE}"
 # Compute average CSA as defined by variable 'vertebral_levels'
 sct_process_segmentation -i "${file_t2_seg}".nii.gz -vertfile "${file_label_vert}".nii.gz \
                          -perslice 1 -o "${PATH_RESULTS}"/"${SUBJECT}"_CSA.csv -append 1 -qc "${PATH_QC}"
+# Segment lesions (only if it does not exist)
+segment_lesion_if_does_not_exist "${file_t2}"
+file_lesion="${FILELESION}"
 
 # Go back to parent folder
 cd ..
