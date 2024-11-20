@@ -65,7 +65,8 @@ label_vertebrae_if_does_not_exist() {
   local file="${1}"
   local file_seg="${2}"
   # Update global variable with segmentation file name
-  FILELABEL="${file}"_label-disc
+  # TODO: modify the name below to _label_disc when Nathan's TotalSpineSeg is ready (the current method outputs a file called FILE_seg_labeled_discs.nii.gz)
+  FILELABEL="${file}"_seg_labeled_discs
   FILELABELMANUAL="${PATH_DATA}"/derivatives/labels/"${SUBJECT}"/anat/"${FILELABEL}".nii.gz
   echo "Looking for manual label: ${FILELABELMANUAL}"
   if [[ -e "${FILELABELMANUAL}" ]]; then
@@ -112,23 +113,24 @@ segment_lesion_if_does_not_exist() {
   # This allows you to add manual segmentations on a subject-by-subject basis without disrupting the pipeline.
 
   local file="${1}"
+  local file_seg="${2}"
   # Update global variable with segmentation file name
   FILELESION="${file}"_lesion-seg
   FILELESIONMANUAL="${PATH_DATA}"/derivatives/labels/"${SUBJECT}"/anat/"${FILELESION}".nii.gz
-  # Create the spinal cord segmentation file name (it has been copied in the previous step)
-  FILESEG="${file}"_seg
   echo
   echo "Looking for manual segmentations: ${FILESEGMANUAL}"
   if [[ -e "${FILELESIONMANUAL}" ]]; then
     echo "Found! Using manual segmentation."
     rsync -avzh "${FILELESIONMANUAL}" "${FILELESION}".nii.gz
-    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${FILESEG}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
+    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${file_seg}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
   else
     echo "Not found. Proceeding with automatic segmentation."
     # Segment spinal cord
     sct_deepseg -i "${file}".nii.gz -task seg_ms_lesion -o "${FILELESION}".nii.gz
-    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${FILESEG}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
+    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${file_seg}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
   fi
+  # Compute lesion analysis
+  sct_analyze_lesion -m "${FILELESION}".nii.gz -s "${file_seg}".nii.gz -i "${file}".nii.gz
 }
 
 # SCRIPT STARTS HERE
@@ -165,7 +167,7 @@ file_label_vert="${FILELABELVERTEBRAE}"
 sct_process_segmentation -i "${file_t2_seg}".nii.gz -vertfile "${file_label_vert}".nii.gz \
                          -perslice 1 -o "${PATH_RESULTS}"/"${SUBJECT}"_CSA.csv -append 1 -qc "${PATH_QC}"
 # Segment lesions (only if it does not exist)
-segment_lesion_if_does_not_exist "${file_t2}"
+segment_lesion_if_does_not_exist "${file_t2}" "${file_t2_seg}"
 file_lesion="${FILELESION}"
 
 # Go back to parent folder
