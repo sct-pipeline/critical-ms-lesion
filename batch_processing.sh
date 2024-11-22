@@ -165,7 +165,7 @@ label_vertebrae_if_does_not_exist "${file_t2}" "${file_t2_seg}"
 file_label_vert="${FILELABELVERTEBRAE}"
 # Compute average CSA as defined by variable 'vertebral_levels'
 sct_process_segmentation -i "${file_t2_seg}".nii.gz -vertfile "${file_label_vert}".nii.gz \
-                         -perslice 1 -o "${PATH_RESULTS}"/"${SUBJECT}"_CSA.csv -append 1
+                         -perslice 1 -o "${PATH_RESULTS}"/"${SUBJECT}"_CSA.csv -append 1 -normalize-PAM50 1
 # Segment lesions (only if it does not exist)
 segment_lesion_if_does_not_exist "${file_t2}" "${file_t2_seg}"
 file_lesion="${FILELESION}"
