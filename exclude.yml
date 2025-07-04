@@ -1,0 +1,49 @@
+slice_motion:
+- sub-024_acq-ax_T2w.nii.gz # Large motion on slice 18. No impact on area of interest
+- sub-030_acq-ax_T2w.nii.gz # Large motion on slice 20. No impact on area of interest.
+- sub-032_acq-ax_T2w.nii.gz # Large motion on slice 17/19/21. No impact on area of interest. 
+- sub-076_acq-ax_T2w.nii.gz # Large motion on center of the image. Empty lesion mask.
+- sub-107_acq-ax_T2w.nii.gz # Large motion on slices around 20. Just above the area of interest.
+- sub-168_acq-ax_T2w.nii.gz # Large motion on slices around 20. No impact on area of interest.
+- sub-197_acq-ax_T2w.nii.gz # Large motion on slices around center slice. No impact on area of interest.
+- sub-210_acq-ax_T2w.nii.gz # Large motion on slices around center slice just below area of interest
+- sub-225_acq-ax_T2w.nii.gz # Large motion on slices around center slice. No impact on area of interest.
+- sub-234_acq-ax_T2w.nii.gz # Slight motion on center slice
+- sub-236_acq-ax_T2w.nii.gz # Slight motion in center slice where lesion is located.
+
+intensity_spikes:
+- sub-038_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-084_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-103_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-181_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-184_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-200_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-201_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-212_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-219_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+- sub-239_acq-ax_T2w.nii.gz # Image with intensity spikes. Empty lesion masks
+
+contrast_issues:
+- sub-230_acq-ax_T2w.nii.gz # High contrast difference between lower part and upper part of the image. Lesion is located in top part where intensity is lower.
+
+empty_lesion_masks:
+- sub-212_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-076_acq-ax_T2w.nii.gz # Also in slice_motion
+- sub-106_acq-ax_T2w.nii.gz
+- sub-033_acq-ax_T2w.nii.gz
+- sub-200_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-184_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-201_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-038_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-152_acq-ax_T2w.nii.gz
+- sub-105_acq-ax_T2w.nii.gz
+- sub-124_acq-ax_T2w.nii.gz
+- sub-181_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-103_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-239_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-084_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-233_acq-ax_T2w.nii.gz
+- sub-043_acq-ax_T2w.nii.gz
+- sub-114_acq-ax_T2w.nii.gz
+- sub-219_acq-ax_T2w.nii.gz # Also in intensity_spikes
+- sub-185_acq-ax_T2w.nii.gz
