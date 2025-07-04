@@ -1,0 +1,50 @@
+slice_motion:
+- 1.2.840.113619.2.207.3596.11021734.28451.1210159513.814.nii.gz # Large motion on slice 18. No impact on area of interest
+- 1.2.840.113619.2.25.4.2416262.1346187475.303.nii.gz # Large motion on slice 20. No impact on area of interest.
+- 1.3.12.2.1107.5.2.30.26888.30000011122714571450000000581.nii.gz # Large motion on slice 17/19/21. No impact on area of interest. 
+- 1.3.12.2.1107.5.2.30.25581.2014121717283919365953665.0.0.0.nii.gz # Large motion on center of the image. Empty lesion mask.
+- 1.2.840.113619.2.353.2807.1589500.18903.1415276055.705.nii.gz # Large motion on slices around 20. Just above the area of interest.
+- 1.2.840.113619.2.25.4.1431432.1484932326.602.nii.gz # Large motion on slices around 20. No impact on area of interest.
+- 1.3.12.2.1107.5.2.43.66053.2016052608514947536024116.0.0.0.nii.gz # Large motion on slices around center slice. No impact on area of interest.
+- 1.3.12.2.1107.5.2.36.162004.30000017101916014621800000015.nii.gz # Large motion on slices around center slice just below area of interest
+- 1.3.12.2.1107.5.2.36.40608.2011022515471453729749123.0.0.0.nii.gz # Large motion on slices around center slice. No impact on area of interest.
+- 1.2.840.113619.2.134.1762386377.1989.1244633271.163.100.200.306.nii.gz # Slight motion on center slice
+- 1.2.840.113619.2.25.4.1214597.1267542243.868.nii.gz # Slight motion in center slice where lesion is located.
+
+intensity_spikes:
+- 1.2.840.113619.2.244.3596.11880548.21832.1433500207.767.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.244.3596.13616250.25529.1410548851.731.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.244.3596.11880548.22154.1486126053.377.nii.gz # Image with intensity spikes. Empty lesion masks
+- 2.16.840.1.113662.4.1458149515632.1142444521.5908943698116625731.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.177.3596.7771142.23288.1185283544.464.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.25.38818.105.1282163488.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.244.4120.7582168.13628.1385124590.565.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.244.3596.11880548.22001.1411646030.637.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.410.6574342.2816289.26158.1495646347563.nii.gz # Image with intensity spikes. Empty lesion masks
+- 1.2.840.113619.2.244.3596.13616250.25608.1421752491.352.nii.gz # Image with intensity spikes. Empty lesion masks
+
+contrast_issues:
+- 1.2.276.0.45.1.7.3.161951842316.19040308135700253.94328.nii.gz # High contrast difference between lower part and upper part of the image. Lesion is located in top part where intensity is lower.
+
+empty_lesion_masks:
+- 1.2.840.113619.2.244.3596.11880548.22001.1411646030.637-label.nii.gz # Also in intensity_spikes
+- 1.3.12.2.1107.5.2.30.25581.2014121717283919365953665.0.0.0-label.nii.gz # Also in slice_motion
+- 1.3.12.2.1107.5.2.6.23059.30000018060112025935900002915-label.nii.gz
+- 1.3.46.670589.11.4416.7.1294169700001501300601-label.nii.gz
+- 1.2.840.113619.2.25.38818.105.1282163488-label.nii.gz # Also in intensity_spikes
+- 1.2.840.113619.2.177.3596.7771142.23288.1185283544.464-label.nii.gz # Also in intensity_spikes
+- 1.2.840.113619.2.244.4120.7582168.13628.1385124590.565-label.nii.gz # Also in intensity_spikes
+- 1.2.840.113619.2.244.3596.11880548.21832.1433500207.767-label.nii.gz # Also in intensity_spikes
+- 1.3.12.2.1107.5.2.31.31356.2013092013385691542534123.0.0.0-label.nii.gz
+- 2.16.840.1.113662.4.1458149515632.1364562815.3936236000945345684-label.nii.gz
+- 1.3.12.2.1107.5.2.31.31117.2016091316501391100043821.0.0.0-label.nii.gz
+- 2.16.840.1.113662.4.1458149515632.1142444521.5908943698116625731-label.nii.gz # Also in intensity_spikes
+- 1.2.840.113619.2.244.3596.11880548.22154.1486126053.377-label.nii.gz # Also in intensity_spikes
+- 1.2.840.113619.2.244.3596.13616250.25608.1421752491.352-label.nii.gz # Also in intensity_spikes
+- 1.2.840.113619.2.244.3596.13616250.25529.1410548851.731-label.nii.gz # Also in intensity_spikes
+- 1.3.12.2.1107.5.2.6.23059.30000010012613565376500006701-label.nii.gz
+- 2.16.840.1.113662.4.1458149515632.1364564325.6155896298951484853-label.nii.gz
+- 1.3.46.670589.11.21609.5.0.7184.2009040611422171185-label.nii.gz
+- 1.2.840.113619.2.410.6574342.2816289.26158.1495646347563-label.nii.gz # Also in intensity_spikes
+- 1.3.12.2.1107.5.2.30.26888.2018122607404527812711010.0.0.0-label.nii.gz
+
