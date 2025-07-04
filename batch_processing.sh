@@ -12,27 +12,12 @@
 #   ./batch_processing.sh <SUBJECT>
 #
 # Example:
-#   ./batch_processing.sh sub-03
+#   ./batch_processing.sh sub-003
 #
-# Author: Julien Cohen-Adad
+# Author: Julien Cohen-Adad and Pierre-Louis Benveniste
 
 # Parameters
-# TODO: remove following parameter if not needed
-# vertebral_levels="1:3"  # Vertebral levels to extract metrics from. "2:12" means from C2 to T5 (included)
-# List of tracts to extract:
-# TODO: deal with that later
-tracts=(
-  "32,33"\
-  "51"\
-  "52"\
-  "53"\
-  "4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29"\
-  "30,31"\
-  "34,35"\
-  "4,5"\
-  "4,5,8,9,10,11,16,17,18,19,20,21,22,23,24,25,26,27"\
-  "0,1,2,3,6,7,12,13,14,15"\
-)
+# =====================================================================================================================
 # The following global variables are retrieved from the caller sct_run_batch but could be overwritten by 
 # uncommenting the lines below:
 # PATH_DATA_PROCESSED="~/data_processed"
@@ -102,7 +87,7 @@ segment_sc_if_does_not_exist() {
   else
     echo "Not found. Proceeding with automatic segmentation."
     # Segment spinal cord
-    sct_deepseg -i "${file}".nii.gz -task seg_sc_contrast_agnostic -thr 0 -qc "${PATH_QC}" -qc-subject "${SUBJECT}"
+    sct_deepseg spinalcord -i "${file}".nii.gz -qc "${PATH_QC}" -qc-subject "${SUBJECT}"
   fi
 }
 
@@ -113,24 +98,21 @@ segment_lesion_if_does_not_exist() {
   # This allows you to add manual segmentations on a subject-by-subject basis without disrupting the pipeline.
 
   local file="${1}"
-  local file_seg="${2}"
+  local file_sc_seg="${2}"
   # Update global variable with segmentation file name
-  FILELESION="${file}"_lesion-seg
+  FILELESION="${file}"_label-lesion_seg
   FILELESIONMANUAL="${PATH_DATA}"/derivatives/labels/"${SUBJECT}"/anat/"${FILELESION}".nii.gz
   echo
-  echo "Looking for manual segmentations: ${FILESEGMANUAL}"
+  echo "Looking for manual segmentations: ${FILELESIONMANUAL}"
   if [[ -e "${FILELESIONMANUAL}" ]]; then
     echo "Found! Using manual segmentation."
     rsync -avzh "${FILELESIONMANUAL}" "${FILELESION}".nii.gz
-    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${file_seg}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
+    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${file_sc_seg}".nii.gz -qc "${PATH_QC}" -plane axial -qc-subject "${SUBJECT}"
   else
     echo "Not found. Proceeding with automatic segmentation."
-    # Segment spinal cord
-    sct_deepseg -i "${file}".nii.gz -task seg_ms_lesion -o "${FILELESION}".nii.gz
-    sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILELESION}".nii.gz -s "${file_seg}".nii.gz -qc "${PATH_QC}" -plane sagittal -qc-subject "${SUBJECT}"
+    # Segment MS lesion
+    sct_deepseg lesion_ms -i "${file}".nii.gz  -o "${FILELESION}".nii.gz -qc "${PATH_QC}" -qc-subject "${SUBJECT}" -qc-seg "${file_sc_seg}"
   fi
-  # Compute lesion analysis
-  sct_analyze_lesion -m "${FILELESION}".nii.gz -s "${file_seg}".nii.gz -i "${file}".nii.gz
 }
 
 # SCRIPT STARTS HERE
@@ -151,33 +133,35 @@ cd "${PATH_DATA_PROCESSED}"
 rsync -avzh "${PATH_DATA}"/"${SUBJECT}" .
 
 
-# T2w
+# For each subject, we process the T2w image
 # =====================================================================================================================
 cd "${SUBJECT}"/anat/
-file_t2="${SUBJECT}"_acq-sagCervCube_T2w
+file_t2="${SUBJECT}"_acq-ax_T2w
 echo "👉 Processing: ${file_t2}"
 # Segment spinal cord (only if it does not exist)
 # Note: we output the soft segmentation for better CSA precision
 segment_sc_if_does_not_exist "${file_t2}"
-file_t2_seg="${FILESEG}"
-# Create labels in the cord at mid-vertebral levels
-label_vertebrae_if_does_not_exist "${file_t2}" "${file_t2_seg}"
-file_label_vert="${FILELABELVERTEBRAE}"
-# Compute average CSA as defined by variable 'vertebral_levels'
-sct_process_segmentation -i "${file_t2_seg}".nii.gz -vertfile "${file_label_vert}".nii.gz \
-                         -perslice 1 -o "${PATH_RESULTS}"/"${SUBJECT}"_CSA.csv -append 1 -normalize-PAM50 1
-# Segment lesions (only if it does not exist)
-segment_lesion_if_does_not_exist "${file_t2}" "${file_t2_seg}"
-file_lesion="${FILELESION}"
+file_t2_sc_seg="${FILE_SC_SEG}"
+# Segment MS lesions (only if it does not exist)
+segment_lesion_if_does_not_exist "${file_t2}" "${file_t2_sc_seg}"
+# # Create labels in the cord at mid-vertebral levels
+# label_vertebrae_if_does_not_exist "${file_t2}" "${file_t2_seg}"
+# file_label_vert="${FILELABELVERTEBRAE}"
+# # Compute average CSA as defined by variable 'vertebral_levels'
+# sct_process_segmentation -i "${file_t2_seg}".nii.gz -vertfile "${file_label_vert}".nii.gz \
+#                          -perslice 1 -o "${PATH_RESULTS}"/"${SUBJECT}"_CSA.csv -append 1 -normalize-PAM50 1
+# # Segment lesions (only if it does not exist)
+# segment_lesion_if_does_not_exist "${file_t2}" "${file_t2_seg}"
+# file_lesion="${FILELESION}"
 
-# Go back to parent folder
-cd ..
+# # Go back to parent folder
+# cd ..
 
 
 # Verify presence of output files and write log file if error
 # ======================================================================================================================
 FILES_TO_CHECK=(
-  "anat/${file_t2_seg}".nii.gz
+  "anat/${file_t2_sc_seg}".nii.gz
 )
 for file in "${FILES_TO_CHECK[@]}"; do
   if [ ! -e "${file}" ]; then
