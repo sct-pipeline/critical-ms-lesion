@@ -125,6 +125,10 @@ compare_mayo_segmentation() {
   FILEMAYOSEG="${file}"_label-criticalLesion_dseg
   FILEMAYOSEGMANUAL="${PATH_DATA}"/derivatives/labels/"${SUBJECT}"/anat/"${FILEMAYOSEG}".nii.gz
   rsync -avzh "${FILEMAYOSEGMANUAL}" "${FILEMAYOSEG}".nii.gz
+  # The file contains values 1 for lesion and values 2 for segmentation
+  ## We first change the file to remove the values 2, so that we can compare it with our segmentation
+  sct_maths -i "${FILEMAYOSEG}".nii.gz -uthr 1.1 -o "${FILEMAYOSEG}".nii.gz
+  # Generate QC
   echo "Generating QC for comparison of Mayo Clinic segmentations with our segmentations."
   sct_qc -i "${file}".nii.gz -p sct_deepseg_lesion -d "${FILEMAYOSEG}".nii.gz -s "${file_sc_seg}".nii.gz -qc "${PATH_QC}" -plane axial -qc-subject "${SUBJECT}"
 }
