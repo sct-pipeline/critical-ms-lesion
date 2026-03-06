@@ -61,34 +61,13 @@ SEX_TO_LEGEND = {
     }
 
 
-def get_parser():
-    parser = argparse.ArgumentParser(
-        description="Plot single subject morphometric metrics (two sessions) together with normative values computed "
-                    "from normative database (spine-generic dataset in PAM50 space) per slice and vertebral levels ")
-    parser.add_argument('-path-HC', required=False, type=str,
-                        default='$SCT_DIR/data/PAM50_normalized_metrics',
-                        help="Path to the folder with CSV files with normative data from spine-generic dataset "
-                             "computed per slice.")
-    parser.add_argument('-participant-file', required=False, type=str,
-                        default='$SCT_DIR/data/PAM50_normalized_metrics/participants.tsv',
-                        help="Path to the spine-generic participants.tsv file (used to filter per sex).")
-    parser.add_argument('-ses1', required=True, type=str,
-                        help="Path to single-subject CSV file for session 1.")
-    parser.add_argument('-ses2', required=True, type=str,
-                        help="Path to single-subject CSV file for session 2.")
-    parser.add_argument('-single-subject-sex', required=False, type=str, choices=['M', 'F'], default=None,
-                        help="Sex of the single subject. Options: 'M', 'F'.")
-    parser.add_argument('-path-out', required=False, type=str, default='figures',
-                        help="Output directory name. Default: figures.")
-
-    return parser
-
-
-def load_normative_data(path_HC, path_participants):
+def load_normative_data(path_HC, path_participants, min_slice=None, max_slice=None):
     """
     Load normative data from spine-generic dataset in PAM50 space
     :param path_HC:
     :param path_participants:
+    :param min_slice:
+    :param max_slice:
     :return:
     """
     # Initialize pandas dataframe where data across all subjects will be stored
@@ -116,29 +95,25 @@ def load_normative_data(path_HC, path_participants):
         # Recode age into age bins by 10 years (decades)
         df['age'] = pd.cut(df['age'], bins=[10, 20, 30, 40, 50, 60], labels=AGE_DECADES)
 
-    df = df.dropna(axis=1, how='all')
-    df = df.dropna(axis=0, how='any').reset_index(drop=True)
-    # Keep only VertLevel from C1 to Th1
-    df = df[df['VertLevel'] <= 8]
-
-    df_spine_generic_min, df_spine_generic_max = df['Slice (I->S)'].min(), df['Slice (I->S)'].max()
-
     # Multiply solidity by 100 to get percentage (sct_process_segmentation computes solidity in the interval 0-1)
     df['MEAN(solidity)'] = df['MEAN(solidity)'] * 100
 
-    # Uncomment to save aggregated dataframe with metrics across all subjects as .csv file
-    #df.to_csv(os.path.join(path_out_csv, 'HC_metrics.csv'), index=False)
+    # if min_slice and max_slice are provided, filter df to keep only rows with Slice (I->S) between min_slice and max_slice
+    if min_slice and max_slice:
+        df = df[(df['Slice (I->S)'] >= min_slice) & (df['Slice (I->S)'] <= max_slice)].reset_index(drop=True)
 
-    return df, df_spine_generic_min, df_spine_generic_max
+    return df
 
 
-def load_single_subject_data(path_single_subject, df_spine_generic_min, df_spine_generic_max):
+def load_single_subject_data(path_single_subject):
     """
     Load single subject data
-    :param path_single_subject: path to single subject CSV file (from session1 or session2)
-    :param df_spine_generic_min: minimum slice number from spine-generic dataset
-    :param df_spine_generic_max: maximum slice number from spine-generic dataset
-    :return:
+    Input:
+        path_single_subject: path to single subject CSV file
+    Output:
+        df_single_subject: pandas DataFrame with single subject data
+        single_subject_min: minimum slice number from the single subject data
+        single_subject_max: maximum slice number from the single subject data
     """
     df_single_subject = pd.read_csv(path_single_subject, dtype=METRICS_DTYPE)
     # Compute compression ratio (CR) as MEAN(diameter_AP) / MEAN(diameter_RL)
@@ -147,11 +122,11 @@ def load_single_subject_data(path_single_subject, df_spine_generic_min, df_spine
     # Multiply solidity by 100 to get percentage (sct_process_segmentation computes solidity in the interval 0-1)
     df_single_subject['MEAN(solidity)'] = df_single_subject['MEAN(solidity)'] * 100
 
-    # Keep only slices from C1 to Th1 to match the slices of the spine-generic normative values
-    df_single_subject = df_single_subject[(df_single_subject['Slice (I->S)'] >= df_spine_generic_min) &
-                                          (df_single_subject['Slice (I->S)'] <= df_spine_generic_max)]
+    # Get the min and max slice number from the single subject data
+    single_subject_min = df_single_subject['Slice (I->S)'].min()
+    single_subject_max = df_single_subject['Slice (I->S)'].max()
 
-    return df_single_subject
+    return df_single_subject, single_subject_min, single_subject_max
 
 
 def get_vert_indices(df):
@@ -268,7 +243,11 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out, sex=None):
 
         # Insert a text label for each vertebral level
         for idx, x in enumerate(ind_vert_mid, 0):
-            # Deal with T1 label (C8 -> T1)
+            # Deal with labels
+            if vert[x] > 19:
+                level = 'L' + str(vert[x] - 19)
+                axs[index].text(df.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
             if vert[x] > 7:
                 level = 'T' + str(vert[x] - 7)
                 axs[index].text(df.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
@@ -290,68 +269,3 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out, sex=None):
     path_filename = os.path.join(path_out, filename)
     plt.savefig(path_filename, dpi=300, bbox_inches='tight')
     print('Figure saved: ' + path_filename)
-
-
-def compute_cv(df, metric):
-    """
-    Compute coefficient of variation (CV) of a given metric.
-    Args:
-        df (pd.dataFrame): dataframe with CSA values
-        metric (str): column name of the dataframe to compute CV
-    Returns:
-        cv (float): coefficient of variation
-    """
-    cv = df[metric].std() / df[metric].mean()
-    cv = cv * 100
-    return cv
-
-
-def main():
-    # Parse arguments
-    parser = get_parser()
-    args = parser.parse_args()
-    path_HC = os.path.expandvars(args.path_HC)
-    path_participants_tsv = os.path.expandvars(args.participant_file)
-    path_ses1 = args.ses1
-    path_ses2 = args.ses2
-    single_subject_sex = args.single_subject_sex
-    path_out_figures = os.path.abspath(args.path_out)
-
-    # If the output folder directory is not present, then create it.
-    if not os.path.exists(path_out_figures):
-        os.makedirs(path_out_figures)
-
-    # Load spine-generic normative data
-    df_normative_data, df_spine_generic_min, df_spine_generic_max = load_normative_data(path_HC, path_participants_tsv)
-
-    # Load single subject data from both sessions
-    df_ses1 = load_single_subject_data(path_ses1, df_spine_generic_min, df_spine_generic_max)
-    df_ses2 = load_single_subject_data(path_ses2, df_spine_generic_min, df_spine_generic_max)
-
-    # Check if df_single_subject is not empty, if so, print warning and exit
-    if df_ses1.empty or df_ses2.empty:
-        print('WARNING: No slices found in the range C1-Th1 in the single subject data. Exiting...')
-        sys.exit(1)
-
-    # Get session IDs from filenames
-    _, ses1 = fetch_subject_and_session(path_ses1)
-    _, ses2 = fetch_subject_and_session(path_ses2)
-
-    ses1 = ses1.replace('ses-', '')
-    ses2 = ses2.replace('ses-', '')
-
-    if single_subject_sex:
-        number_of_subjects = len(df_normative_data[df_normative_data['sex'] == single_subject_sex]
-                                 ['participant_id'].unique())
-        print(f"Number of {SEX_TO_LEGEND[single_subject_sex]}: {number_of_subjects}")
-    else:
-        number_of_subjects = len(df_normative_data['participant_id'].unique())
-        print(f'Number of subjects: {number_of_subjects}')
-
-    # Create plots
-    create_lineplot(df_normative_data, df_ses1, df_ses2, ses1, ses2, number_of_subjects, path_out_figures,
-                    sex=single_subject_sex)
-
-
-if __name__ == '__main__':
-    main()
