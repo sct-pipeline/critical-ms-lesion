@@ -162,6 +162,33 @@ def plot_csa(norm_csa_file, pam_50_csa_folder, output_path):
     return None
 
 
+def compute_asymmetry(image, sc_mask, vert_levels, output_path):
+    """
+    This function computes the asymmetry of the spinal cord at each vertebral level.
+    Input:
+        image: Path to the input image (NIfTI format)
+        sc_mask: Path to the SC segmentation mask (NIfTI format)
+        vert_levels: Path to the vertebral labeling (NIfTI format)
+        output_path: Path to the output folder
+    Output:
+        output_csv: Path to the output csv file containing the asymmetry results
+    """
+    # Build output qc path
+    qc_path = os.path.join(output_path, "qc_hog")
+    os.makedirs(qc_path, exist_ok=True)
+
+    # Build output csv path
+    output_csv = os.path.join(output_path, "asymmetry.csv")
+
+    if os.path.exists(output_csv):
+        return output_csv
+
+    # Run asymmetry computation
+    assert os.system(f"sct_process_segmentation -i {sc_mask} -anat {image} -perslice 1 -normalize-PAM50 1 -qc {qc_path} -o {output_csv} -v 2 -discfile {vert_levels}") == 0, "Error running the sct_compute_asymmetry command"
+
+    return output_csv
+
+
 def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder):
 
     # Build the output folder
@@ -188,6 +215,9 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder):
 
     # Now we detect atrophies by comparing with the PAM50 template
     plot_csa(norm_csa_file, pam_50_csa_folder, output_path)
+
+    # Now we perform asymetry computation
+    asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path)
 
 
 if __name__ == "__main__":
