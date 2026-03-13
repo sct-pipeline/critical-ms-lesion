@@ -18,7 +18,8 @@ from pdb import run
 import nibabel as nib
 import numpy as np
 from scipy import ndimage
-from generate_csa_plot import load_normative_data, load_single_subject_data, create_lineplot
+import pandas as pd
+from generate_csa_plot import load_normative_data, load_single_subject_data, create_lineplot, create_lineplot_asymetry
 
 
 def parse_arguments():
@@ -145,6 +146,12 @@ def plot_csa(norm_csa_file, pam_50_csa_folder, output_path):
     Output:
         A list of detected atrophies
     """
+    # Build output plot path
+    path_csa_plot = os.path.join(output_path, "csa_plot.png")
+
+    if os.path.exists(path_csa_plot):
+        return path_csa_plot
+
     # Load the subject normalized CSA data
     df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(norm_csa_file)   
 
@@ -157,9 +164,9 @@ def plot_csa(norm_csa_file, pam_50_csa_folder, output_path):
     number_of_subjects = len(df_normative_data['participant_id'].unique())
 
     # Create the plots
-    create_lineplot(df_normative_data, df_sub, subject_id, number_of_subjects, output_path) 
+    create_lineplot(df_normative_data, df_sub, subject_id, number_of_subjects, path_csa_plot) 
     
-    return None
+    return path_csa_plot
 
 
 def compute_asymmetry(image, sc_mask, vert_levels, output_path):
@@ -189,6 +196,40 @@ def compute_asymmetry(image, sc_mask, vert_levels, output_path):
     return output_csv
 
 
+def plot_asymmetry(asymmetry_csv, output_path):
+    """
+    This function plots the asymmetry results.
+    Input:
+        asymmetry_csv: Path to the csv file containing the asymmetry results
+        output_path: Path to the output folder
+    Output:
+        None
+    """
+    # Build output plot path
+    path_asymmetry_plot = os.path.join(output_path, "asymmetry_plot.png")
+
+    if os.path.exists(path_asymmetry_plot):
+        return path_asymmetry_plot
+    
+    # Load the asymmetry results
+    df_asymmetry = pd.read_csv(asymmetry_csv)
+    # We create the ratio columns for the anterior and posterior quadrants
+    df_asymmetry["RATIO(area_quadrant_anterior_left/right)"] = df_asymmetry["MEAN(area_quadrant_anterior_left)"] / df_asymmetry["MEAN(area_quadrant_anterior_right)"]
+    df_asymmetry["RATIO(area_quadrant_posterior_left/right)"] = df_asymmetry["MEAN(area_quadrant_posterior_left)"] / df_asymmetry["MEAN(area_quadrant_posterior_right)"]
+    # We create the difference columns for the anterior and posterior quadrants
+    df_asymmetry["DIFF(area_quadrant_anterior_left-right)"] = df_asymmetry["MEAN(area_quadrant_anterior_left)"] - df_asymmetry["MEAN(area_quadrant_anterior_right)"]
+    df_asymmetry["DIFF(area_quadrant_posterior_left-right)"] = df_asymmetry["MEAN(area_quadrant_posterior_left)"] - df_asymmetry["MEAN(area_quadrant_posterior_right)"]
+    # We create a normalized difference column for the anterior and posterior quadrants (difference divided by the mean of the two quadrants)
+    df_asymmetry["NORM_DIFF(area_quadrant_anterior_left-right)"] = df_asymmetry["DIFF(area_quadrant_anterior_left-right)"] / df_asymmetry["MEAN(area_quadrant_anterior_left)"]
+    df_asymmetry["NORM_DIFF(area_quadrant_posterior_left-right)"] = df_asymmetry["DIFF(area_quadrant_posterior_left-right)"] / df_asymmetry["MEAN(area_quadrant_posterior_left)"]
+    # Get subject ID from output path
+    subject_id = output_path.split("/")[-1]
+    # Create the plot
+    create_lineplot_asymetry(df_asymmetry, subject_id, path_asymmetry_plot)
+
+    return path_asymmetry_plot
+
+
 def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder):
 
     # Build the output folder
@@ -213,11 +254,14 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder):
     # Now we investigate the detection of spinal cord atrophy
     norm_csa_file = compute_normalized_csa(sc_mask, vert_levels, output_path, run=True)
 
-    # Now we detect atrophies by comparing with the PAM50 template
-    plot_csa(norm_csa_file, pam_50_csa_folder, output_path)
+    # Now we plot the CSA compared to the PAM50
+    path_csa_plot = plot_csa(norm_csa_file, pam_50_csa_folder, output_path)
 
     # Now we perform asymetry computation
     asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path)
+
+    # Plot asymetry
+    path_asymmetry_plot = plot_asymmetry(asymetry_csv, output_path)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ METRIC_TO_AXIS = {
 }
 
 LABELS_FONT_SIZE = 14
-TICKS_FONT_SIZE = 12
+TICKS_FONT_SIZE = 8
 
 AGE_DECADES = ['10-20', '21-30', '31-40', '41-50', '51-60']
 
@@ -129,7 +129,7 @@ def load_single_subject_data(path_single_subject):
     return df_single_subject, single_subject_min, single_subject_max
 
 
-def get_vert_indices(df):
+def get_vert_indices(df, single_subject=False):
     """
     Get indices of slices corresponding to mid-vertebrae
     Args:
@@ -139,10 +139,13 @@ def get_vert_indices(df):
         ind_vert (np.array): indices of slices corresponding to the beginning of each level (=intervertebral disc)
         ind_vert_mid (np.array): indices of slices corresponding to mid-levels
     """
-    # Get unique participant IDs
-    subjects = df['participant_id'].unique()
-    # Get vert levels for one certain subject
-    vert = df[df['participant_id'] == subjects[0]]['VertLevel']
+    if not single_subject:
+        # Get unique participant IDs
+        subjects = df['participant_id'].unique()
+        # Get vert levels for one certain subject
+        vert = df[df['participant_id'] == subjects[0]]['VertLevel']
+    else:
+        vert = df['VertLevel']
     # Get indexes of where array changes value
     ind_vert = vert.diff()[vert.diff() != 0].index.values
     # Get the beginning of C1
@@ -178,7 +181,7 @@ def fetch_subject_and_session(filename_path):
     return subjectID, sessionID
 
 
-def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out, sex=None):
+def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, sex=None):
     """
     Create lineplot for individual metrics per vertebral levels.
     Note: we are plotting slices not levels to avoid averaging across levels.
@@ -187,7 +190,7 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out, sex=None):
         df_ses1 (pd.dataFrame): dataframe with single subject values from session 1
         subID (str): subject ID
         number_of_subjects (int): number of subjects in spine-generic dataset
-        path_out (str): path to output directory
+        path_out_png (str): path of the output png save
         sex (str): sex to filter spine-generic subjects on; possible options: 'M', 'F'
     """
 
@@ -265,7 +268,114 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out, sex=None):
         axs[index].set_axisbelow(True)
 
     # Save figure
-    filename = subID + '_T2w_lineplot_PAM50.png'
-    path_filename = os.path.join(path_out, filename)
-    plt.savefig(path_filename, dpi=300, bbox_inches='tight')
-    print('Figure saved: ' + path_filename)
+    plt.savefig(path_out_png, dpi=300, bbox_inches='tight')
+    print('Figure saved: ' + path_out_png)
+
+
+def create_lineplot_asymetry(df_sub, subID, path_out_png):
+    """
+    Create lineplot for individual metrics per vertebral levels.
+    Note: we are plotting slices not levels to avoid averaging across levels.
+    Args:
+        df (pd.dataFrame): dataframe with the subject values
+        path_out (str): path to output directory
+    """
+    METRICS_ASYMMETRY = ['MEAN(area_quadrant_anterior_left)', "DIFF(area_quadrant_anterior_left-right)", "NORM_DIFF(area_quadrant_anterior_left-right)", "RATIO(area_quadrant_anterior_left/right)",
+                         'MEAN(area_quadrant_posterior_left)', "DIFF(area_quadrant_posterior_left-right)", "NORM_DIFF(area_quadrant_posterior_left-right)", "RATIO(area_quadrant_posterior_left/right)",
+                         'MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)']
+    
+    METRIC_TO_AXIS_ASYMETRY = {
+    'MEAN(area_quadrant_anterior_left)': 'Anterior Quadrant Area [mm²]',
+    'RATIO(area_quadrant_anterior_left/right)': 'Anterior Quadrant Area Ratio (L/R)',
+    'DIFF(area_quadrant_anterior_left-right)': 'Anterior Quadrant Area Difference (L-R) [mm²]',
+    'NORM_DIFF(area_quadrant_anterior_left-right)': 'Anterior Quadrant Area Normalized Diff (L-R)',
+    'MEAN(area_quadrant_posterior_left)': 'Posterior Quadrant Area [mm²]',
+    'RATIO(area_quadrant_posterior_left/right)': 'Posterior Quadrant Area Ratio (L/R)',
+    'DIFF(area_quadrant_posterior_left-right)': 'Posterior Quadrant Area Difference (L-R) [mm²]',
+    'NORM_DIFF(area_quadrant_posterior_left-right)': 'Posterior Quadrant Area Normalized Diff (L-R)',
+    'MEAN(symmetry_dice_RL)': 'Symmetry Dice',
+    'MEAN(symmetry_hausdorff_RL)': 'Symmetry Hausdorff',
+    }
+    fig, axes = plt.subplots(3, 4, figsize=(30, 20))
+    axs = axes.ravel()
+
+    # Remove rows with NaN values
+    df_sub = df_sub.dropna(subset=METRICS_ASYMMETRY).reset_index(drop=True)
+
+    # Loop across metrics
+    for index, metric in enumerate(METRICS_ASYMMETRY):
+        if metric in ["MEAN(area_quadrant_anterior_left)", "MEAN(area_quadrant_posterior_left)"]:
+            # Plot the first metric in blue (corresponding to the left side)
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='blue',
+                         label=f'Left') 
+            # Now we plot the right side
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric.replace('_left', '_right'),
+                         data=df_sub, linewidth=2, color='red', label=f'Right')
+        elif metric in ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)']:
+            # Plot the first metric in purple (corresponding to the right-left symmetry)
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='purple',
+                         label=f'Right-Left')
+            # Plot the AP symmetry metrics in orange
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric.replace('_RL', '_AP'), data=df_sub, linewidth=2, color='orange',
+                         label=f'Anterior-Posterior')
+        else:
+            # Plot single subject data session 1
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
+                        label=f'{subID}')
+
+        ymin, ymax = axs[index].get_ylim()
+
+        # Add legend
+        if metric in ["MEAN(area_quadrant_anterior_left)", "MEAN(area_quadrant_posterior_left)", 'MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)']:
+            axs[index].legend(loc='upper right', fontsize=TICKS_FONT_SIZE)
+        else:
+            axs[index].get_legend().remove()
+
+        # Add master title
+        plt.suptitle(f'Asymetry plots for {subID} across axial slices and vertebral levels',
+                     fontweight='bold', fontsize=LABELS_FONT_SIZE, y=0.92)
+
+        # Add labels
+        axs[index].set_ylabel(METRIC_TO_AXIS_ASYMETRY[metric], fontsize=LABELS_FONT_SIZE)
+        axs[index].set_xlabel('Axial Slice #', fontsize=LABELS_FONT_SIZE)
+        # Increase xticks and yticks font size
+        axs[index].tick_params(axis='both', which='major', labelsize=TICKS_FONT_SIZE)
+
+        # Remove spines
+        axs[index].spines['right'].set_visible(False)
+        axs[index].spines['left'].set_visible(False)
+        axs[index].spines['top'].set_visible(False)
+        axs[index].spines['bottom'].set_visible(True)
+
+        # Get indices of slices corresponding vertebral levels
+        vert, ind_vert, ind_vert_mid = get_vert_indices(df_sub, single_subject=True)
+        # Insert a vertical line for each intervertebral disc
+        for idx, x in enumerate(ind_vert[1:-1]):
+            axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
+
+        # Insert a text label for each vertebral level
+        for idx, x in enumerate(ind_vert_mid, 0):
+            # Deal with labels
+            if vert[x] > 19:
+                level = 'L' + str(vert[x] - 19)
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+            if vert[x] > 7:
+                level = 'T' + str(vert[x] - 7)
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+            else:
+                level = 'C' + str(vert[x])
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+
+        # Invert x-axis
+        axs[index].invert_xaxis()
+        # Add only horizontal grid lines
+        axs[index].yaxis.grid(True)
+        # Move grid to background (i.e. behind other elements)
+        axs[index].set_axisbelow(True)
+
+    # Save figure
+    plt.savefig(path_out_png, dpi=300, bbox_inches='tight')
+    print('Figure saved: ' + path_out_png)
