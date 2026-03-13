@@ -272,13 +272,14 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, sex=No
     print('Figure saved: ' + path_out_png)
 
 
-def create_lineplot_asymetry(df_sub, subID, path_out_png):
+def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
     """
     Create lineplot for individual metrics per vertebral levels.
     Note: we are plotting slices not levels to avoid averaging across levels.
     Args:
         df (pd.dataFrame): dataframe with the subject values
         path_out (str): path to output directory
+        lesion_statistics (list of dicts): list of dictionaries containing lesion statistics, where each dictionary has the following keys: 'label', 'size', 'CoM' and 'slices'
     """
     METRICS_ASYMMETRY = ['MEAN(area_quadrant_anterior_left)', "DIFF(area_quadrant_anterior_left-right)", "NORM_DIFF(area_quadrant_anterior_left-right)", "RATIO(area_quadrant_anterior_left/right)",
                          'MEAN(area_quadrant_posterior_left)', "DIFF(area_quadrant_posterior_left-right)", "NORM_DIFF(area_quadrant_posterior_left-right)", "RATIO(area_quadrant_posterior_left/right)",
@@ -301,9 +302,20 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png):
 
     # Remove rows with NaN values
     df_sub = df_sub.dropna(subset=METRICS_ASYMMETRY).reset_index(drop=True)
+    df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
 
     # Loop across metrics
     for index, metric in enumerate(METRICS_ASYMMETRY):
+        # We color the brackground colons where the lesions are
+        colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
+        for lesion_idx, lesion in enumerate(lesion_statistics):
+            lesion_slices = sorted(list(lesion['slices']))
+            start, end = lesion_slices[0], lesion_slices[-1]
+            # Create the x-range for this specific lesion
+            x_range = np.arange(start, end + 1) # +1 to include the last slice
+            # Fill the background from y=0 to y=1
+            axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
+            
         if metric in ["MEAN(area_quadrant_anterior_left)", "MEAN(area_quadrant_posterior_left)"]:
             # Plot the first metric in blue (corresponding to the left side)
             sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='blue',
@@ -349,6 +361,7 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png):
 
         # Get indices of slices corresponding vertebral levels
         vert, ind_vert, ind_vert_mid = get_vert_indices(df_sub, single_subject=True)
+        vert = [int(v) for v in vert]  # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
         # Insert a vertical line for each intervertebral disc
         for idx, x in enumerate(ind_vert[1:-1]):
             axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)

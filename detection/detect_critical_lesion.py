@@ -104,13 +104,22 @@ def get_lesion_stats(lesion_mask):
     # Get voxel volume
     voxel_volume = np.prod(lesion_mask.header.get_zooms())
 
+    # Get orientation
+    orientation = nib.aff2axcodes(lesion_mask.affine)
+    IF_axis_index = orientation.index('I') if 'I' in orientation else (orientation.index('S') if 'S' in orientation else None)
+
     # For each lesion, compute its CoM and size
     for lesion_label in range(1, num_lesions + 1):
         lesion_mask = labeled_lesions == lesion_label
+        # Lesion size
         lesion_size = float(np.sum(lesion_mask)*voxel_volume)
+        # Lesion CoM in voxel coordinates
         lesion_com = ndimage.center_of_mass(lesion_mask)
         lesion_com = (float(lesion_com[0]), float(lesion_com[1]), float(lesion_com[2]))
-        lesion_stats.append({"label": lesion_label, "size": lesion_size, "CoM": lesion_com})
+        # We compute a list of all ax slices where the lesion is present
+        lesion_slices = set(np.where(lesion_mask)[IF_axis_index].tolist())
+        lesion_stats.append({"label": lesion_label, "size": lesion_size, "CoM": lesion_com, "slices": lesion_slices})
+
     return lesion_stats
 
 
@@ -191,28 +200,10 @@ def compute_asymmetry(image, sc_mask, vert_levels, output_path):
         return output_csv
 
     # Run asymmetry computation
-    assert os.system(f"sct_process_segmentation -i {sc_mask} -anat {image} -perslice 1 -normalize-PAM50 1 -qc {qc_path} -o {output_csv} -v 2 -discfile {vert_levels}") == 0, "Error running the sct_compute_asymmetry command"
+    assert os.system(f"sct_process_segmentation -i {sc_mask} -anat {image} -perslice 1 -qc {qc_path} -o {output_csv} -v 2 -discfile {vert_levels}") == 0, "Error running the sct_compute_asymmetry command"
 
-    return output_csv
-
-
-def plot_asymmetry(asymmetry_csv, output_path):
-    """
-    This function plots the asymmetry results.
-    Input:
-        asymmetry_csv: Path to the csv file containing the asymmetry results
-        output_path: Path to the output folder
-    Output:
-        None
-    """
-    # Build output plot path
-    path_asymmetry_plot = os.path.join(output_path, "asymmetry_plot.png")
-
-    if os.path.exists(path_asymmetry_plot):
-        return path_asymmetry_plot
-    
-    # Load the asymmetry results
-    df_asymmetry = pd.read_csv(asymmetry_csv)
+    # Add the following columns
+    df_asymmetry = pd.read_csv(output_csv)
     # We create the ratio columns for the anterior and posterior quadrants
     df_asymmetry["RATIO(area_quadrant_anterior_left/right)"] = df_asymmetry["MEAN(area_quadrant_anterior_left)"] / df_asymmetry["MEAN(area_quadrant_anterior_right)"]
     df_asymmetry["RATIO(area_quadrant_posterior_left/right)"] = df_asymmetry["MEAN(area_quadrant_posterior_left)"] / df_asymmetry["MEAN(area_quadrant_posterior_right)"]
@@ -222,10 +213,35 @@ def plot_asymmetry(asymmetry_csv, output_path):
     # We create a normalized difference column for the anterior and posterior quadrants (difference divided by the mean of the two quadrants)
     df_asymmetry["NORM_DIFF(area_quadrant_anterior_left-right)"] = df_asymmetry["DIFF(area_quadrant_anterior_left-right)"] / df_asymmetry["MEAN(area_quadrant_anterior_left)"]
     df_asymmetry["NORM_DIFF(area_quadrant_posterior_left-right)"] = df_asymmetry["DIFF(area_quadrant_posterior_left-right)"] / df_asymmetry["MEAN(area_quadrant_posterior_left)"]
+    
+    # Save the updated dataframe to the same csv file
+    df_asymmetry.to_csv(output_csv, index=False)
+
+    return output_csv
+
+
+def plot_asymmetry(asymmetry_csv, lesion_statistics, output_path):
+    """
+    This function plots the asymmetry results.
+    Input:
+        asymmetry_csv: Path to the csv file containing the asymmetry results
+        lesion_statistics: List of dictionaries containing lesion statistics
+        output_path: Path to the output folder
+    Output:
+        None
+    """
+    # Build output plot path
+    path_asymmetry_plot = os.path.join(output_path, "asymmetry_plot.png")
+
+    # if os.path.exists(path_asymmetry_plot):
+    #     return path_asymmetry_plot
+    
+    # Load the asymmetry results
+    df_asymmetry = pd.read_csv(asymmetry_csv)
     # Get subject ID from output path
     subject_id = output_path.split("/")[-1]
     # Create the plot
-    create_lineplot_asymetry(df_asymmetry, subject_id, path_asymmetry_plot)
+    create_lineplot_asymetry(df_asymmetry, subject_id, path_asymmetry_plot, lesion_statistics)
 
     return path_asymmetry_plot
 
@@ -261,7 +277,7 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder):
     asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path)
 
     # Plot asymetry
-    path_asymmetry_plot = plot_asymmetry(asymetry_csv, output_path)
+    path_asymmetry_plot = plot_asymmetry(asymetry_csv, lesion_statistics, output_path)
 
 
 if __name__ == "__main__":
