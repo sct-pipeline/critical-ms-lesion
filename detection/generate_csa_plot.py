@@ -283,7 +283,7 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
     """
     METRICS_ASYMMETRY = ['MEAN(area_quadrant_anterior_left)', "DIFF(area_quadrant_anterior_left-right)", "NORM_DIFF(area_quadrant_anterior_left-right)", "RATIO(area_quadrant_anterior_left/right)",
                          'MEAN(area_quadrant_posterior_left)', "DIFF(area_quadrant_posterior_left-right)", "NORM_DIFF(area_quadrant_posterior_left-right)", "RATIO(area_quadrant_posterior_left/right)",
-                         'MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)']
+                         'MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)']
     
     METRIC_TO_AXIS_ASYMETRY = {
     'MEAN(area_quadrant_anterior_left)': 'Anterior Quadrant Area [mm²]',
@@ -296,6 +296,7 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
     'NORM_DIFF(area_quadrant_posterior_left-right)': 'Posterior Quadrant Area Normalized Diff (L-R)',
     'MEAN(symmetry_dice_RL)': 'Symmetry Dice',
     'MEAN(symmetry_hausdorff_RL)': 'Symmetry Hausdorff',
+    'MEAN(symmetry_difference_RL)': 'Symmetry Difference',
     }
     fig, axes = plt.subplots(3, 4, figsize=(30, 20))
     axs = axes.ravel()
@@ -323,7 +324,7 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
             # Now we plot the right side
             sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric.replace('_left', '_right'),
                          data=df_sub, linewidth=2, color='red', label=f'Right')
-        elif metric in ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)']:
+        elif metric in ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)']:
             # Plot the first metric in purple (corresponding to the right-left symmetry)
             sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='purple',
                          label=f'Right-Left')
@@ -338,7 +339,7 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
         ymin, ymax = axs[index].get_ylim()
 
         # Add legend
-        if metric in ["MEAN(area_quadrant_anterior_left)", "MEAN(area_quadrant_posterior_left)", 'MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)']:
+        if metric in ["MEAN(area_quadrant_anterior_left)", "MEAN(area_quadrant_posterior_left)", 'MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)']:
             axs[index].legend(loc='upper right', fontsize=TICKS_FONT_SIZE)
         else:
             axs[index].get_legend().remove()
