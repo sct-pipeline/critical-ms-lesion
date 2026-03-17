@@ -19,13 +19,14 @@ import nibabel as nib
 import numpy as np
 from scipy import ndimage
 import pandas as pd
-from generate_csa_plot import load_normative_data, load_single_subject_data, create_lineplot, create_lineplot_asymetry
+from generate_csa_plot import load_normative_data, load_single_subject_data, create_lineplot, create_lineplot_asymetry, create_lineplot_asymetry_with_hc, load_normative_data_asymmetry
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Detect critical lesions in MRI scans.")
     parser.add_argument("-i", "--input", required=True, help="Path to the MRI scan (NIfTI format)")
     parser.add_argument("--pam50", required=True, help="Path to the PAM50 template folder containing all the csv files")
+    parser.add_argument("--hc-data", required=True, help="Path to the healthy control data folder for asymmetry comparison")
     parser.add_argument("-o", "--output_folder", required=True, help="Path to the output folder")
     return parser.parse_args()
 
@@ -178,7 +179,7 @@ def plot_csa(norm_csa_file, pam_50_csa_folder, output_path):
     return path_csa_plot
 
 
-def compute_asymmetry(image, sc_mask, vert_levels, output_path, qc_folder):
+def compute_asymmetry(image, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=False):
     """
     This function computes the asymmetry of the spinal cord at each vertebral level.
     Input:
@@ -191,13 +192,21 @@ def compute_asymmetry(image, sc_mask, vert_levels, output_path, qc_folder):
     """
 
     # Build output csv path
-    output_csv = os.path.join(output_path, "asymmetry.csv")
+    if pam50_normalization:
+        output_csv = os.path.join(output_path, "asymmetry_normalized_pam50.csv")
+    else:
+        output_csv = os.path.join(output_path, "asymmetry.csv")
 
     if os.path.exists(output_csv):
         return output_csv
+    
+    if pam50_normalization:
+        normalization_flag = "-normalize-PAM50 1"
+    else:
+        normalization_flag = ""
 
     # Run asymmetry computation
-    assert os.system(f"sct_process_segmentation -i {sc_mask} -anat {image} -perslice 1 -qc {qc_folder} -o {output_csv} -v 2 -discfile {vert_levels}") == 0, "Error running the sct_compute_asymmetry command"
+    assert os.system(f"sct_process_segmentation -i {sc_mask} -anat {image} -perslice 1 -qc {qc_folder} -o {output_csv} -discfile {vert_levels} {normalization_flag}") == 0, "Error running the sct_compute_asymmetry command"
 
     # Add the following columns
     df_asymmetry = pd.read_csv(output_csv)
@@ -230,8 +239,8 @@ def plot_asymmetry(asymmetry_csv, lesion_statistics, output_path):
     # Build output plot path
     path_asymmetry_plot = os.path.join(output_path, "asymmetry_plot.png")
 
-    # if os.path.exists(path_asymmetry_plot):
-    #     return path_asymmetry_plot
+    if os.path.exists(path_asymmetry_plot):
+        return path_asymmetry_plot
     
     # Load the asymmetry results
     df_asymmetry = pd.read_csv(asymmetry_csv)
@@ -241,6 +250,42 @@ def plot_asymmetry(asymmetry_csv, lesion_statistics, output_path):
     create_lineplot_asymetry(df_asymmetry, subject_id, path_asymmetry_plot, lesion_statistics)
 
     return path_asymmetry_plot
+
+
+def plot_asymmetry_with_hc(asymmetry_csv, path_hc_data, lesion_statistics, output_path):
+    """
+    This function plots the asymmetry results compared to a healthy control group.
+    Input:
+        asymmetry_csv: Path to the csv file containing the asymmetry results
+        path_hc_data: Path to the healthy control data folder for asymmetry comparison
+        lesion_statistics: List of dictionaries containing lesion statistics
+        output_path: Path to the output folder
+    Output:
+        None
+    """
+    # Build output plot path
+    path_asymmetry_plot_hc = os.path.join(output_path, "asymmetry_plot_hc.png")
+
+    # if os.path.exists(path_asymmetry_plot_hc):
+    #     return path_asymmetry_plot_hc
+    
+    # Load the asymmetry results
+    df_asymmetry = pd.read_csv(asymmetry_csv)
+    # Get subject ID from output path
+    subject_id = output_path.split("/")[-1]
+    # Get min and max slice index from the asymmetry csv to load only the relevant slices from the healthy control data
+    min_slice_idx = df_asymmetry["Slice (I->S)"].min()
+    max_slice_idx = df_asymmetry["Slice (I->S)"].max()
+
+    data_tsv = os.path.join(path_hc_data, "participants.tsv")
+    
+    # Load healthy control data
+    df_hc = load_normative_data_asymmetry(path_hc_data, data_tsv, min_slice=min_slice_idx, max_slice=max_slice_idx)
+
+    # Create the plot
+    create_lineplot_asymetry_with_hc(df_asymmetry, df_hc, subject_id, path_asymmetry_plot_hc, lesion_statistics)
+
+    return path_asymmetry_plot_hc
 
 
 def detect_laterality(image, lesion_mask, sc_mask, discs_levels, output_path, qc_folder):
@@ -265,20 +310,20 @@ def detect_laterality(image, lesion_mask, sc_mask, discs_levels, output_path, qc
     #     return output_report
 
     # Register to template
-    registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=hog,iter=10:step=2,type=seg,algo=bsplinesyn,slicewise=1"
+    registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=seg,algo=bsplinesyn,slicewise=1"
     assert os.system(f"sct_register_to_template -i {image} -s {sc_mask} -ldisc {discs_levels} -ref subject -param {registration_param} -c t2 -ofolder {template_folder} -qc {qc_folder}") == 0, "Error running the sct_register_to_template command"
     
-    # Warp atlas to the subject space
-    path_template = os.path.join(template_folder, "warp_template2anat.nii.gz")
-    assert os.system(f"sct_warp_template -d {image} -w {path_template} -ofolder {template_folder} -qc {qc_folder}") == 0, "Error running the sct_warp_template command"
+    # # Warp atlas to the subject space
+    # path_template = os.path.join(template_folder, "warp_template2anat.nii.gz")
+    # assert os.system(f"sct_warp_template -d {image} -w {path_template} -ofolder {template_folder} -qc {qc_folder}") == 0, "Error running the sct_warp_template command"
 
-    # Atlas-based lesion analysis
-    assert os.system(f"sct_analyze_lesion -m {lesion_mask} -s {sc_mask} -f {template_folder} -perslice 1 -qc {qc_folder}") == 0, "Error running the sct_analyze_lesion command"
+    # # Atlas-based lesion analysis
+    # assert os.system(f"sct_analyze_lesion -m {lesion_mask} -s {sc_mask} -f {template_folder} -perslice 1") == 0, "Error running the sct_analyze_lesion command"
 
     return None
 
 
-def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder):
+def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder, path_hc_data):
 
     # Build the output folder
     image_name = input_scan.split("/")[-1].replace(".nii.gz", "")
@@ -313,10 +358,15 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder):
     # Plot asymetry
     path_asymmetry_plot = plot_asymmetry(asymetry_csv, lesion_statistics, output_path)
 
+    asymetry_csv_pam50 = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
+    
+    # Plot asymetry with HC group
+    path_asymmetry_plot_hc = plot_asymmetry_with_hc(asymetry_csv_pam50, path_hc_data, lesion_statistics, output_path)
+
     # Detect laterality
-    laterality_report = detect_laterality(input_scan, lesion_mask, sc_mask, vert_levels, output_path, qc_folder)
+    # laterality_report = detect_laterality(input_scan, lesion_mask, sc_mask, vert_levels, output_path, qc_folder)
 
 
 if __name__ == "__main__":
     args = parse_arguments()
-    detect_critical_lesions(args.input, args.output_folder, args.pam50)
+    detect_critical_lesions(args.input, args.output_folder, args.pam50, args.hc_data)

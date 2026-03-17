@@ -298,6 +298,7 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
     'MEAN(symmetry_hausdorff_RL)': 'Symmetry Hausdorff',
     'MEAN(symmetry_difference_RL)': 'Symmetry Difference',
     }
+    
     fig, axes = plt.subplots(3, 4, figsize=(30, 20))
     axs = axes.ravel()
 
@@ -393,3 +394,147 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
     # Save figure
     plt.savefig(path_out_png, dpi=300, bbox_inches='tight')
     print('Figure saved: ' + path_out_png)
+
+
+def load_normative_data_asymmetry(path_HC, path_participants, min_slice=None, max_slice=None):
+    """
+    Load normative data from spine-generic dataset in PAM50 space
+    :param path_HC:
+    :param path_participants:
+    :param min_slice:
+    :param max_slice:
+    :return:
+    """
+    # Initialize pandas dataframe where data across all subjects will be stored
+    df = pd.DataFrame()
+    # Loop through .csv files of healthy controls
+    for file in os.listdir(path_HC):
+        if 'PAM50.csv' in file:
+            # Read csv file as pandas dataframe for given subject
+            df_subject = pd.read_csv(os.path.join(path_HC, file))
+
+            # Concatenate DataFrame objects
+            df = pd.concat([df, df_subject], axis=0, ignore_index=True)
+    # Get sub-id (e.g., sub-amu01) from Filename column and insert it as a new column called participant_id
+    # Subject ID is the first word before _ in the last part (after slash) of the filename
+    df.insert(0, 'participant_id', df['Filename'].str.split('/').str[-1].str.split('_').str[0])
+
+    # If a participants.tsv file is provided, insert columns sex, age and manufacturer from df_participants into df
+    if path_participants:
+        df_participants = pd.read_csv(path_participants, sep='\t')
+        df = df.merge(df_participants[["age", "sex", "height", "weight", "manufacturer", "participant_id", "pathology"]],
+                      on='participant_id')
+        # Recode age into age bins by 10 years (decades)
+        df['age'] = pd.cut(df['age'], bins=[10, 20, 30, 40, 50, 60], labels=AGE_DECADES)
+
+    # Remove the subjects which are not HC
+    df = df[df['pathology'] == 'HC'].reset_index(drop=True)
+
+    # if min_slice and max_slice are provided, filter df to keep only rows with Slice (I->S) between min_slice and max_slice
+    if min_slice and max_slice:
+        df = df[(df['Slice (I->S)'] >= min_slice) & (df['Slice (I->S)'] <= max_slice)].reset_index(drop=True)
+
+    return df
+
+
+def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_statistics):
+    """
+    Create lineplot for individual metrics per vertebral levels.
+    Note: we are plotting slices not levels to avoid averaging across levels.
+    Args:
+        df_sub (pd.dataFrame): dataframe with the subject values
+        df_hc (pd.dataFrame): dataframe with the healthy control values
+        subID (str): subject ID
+        path_out_png (str): path to output PNG file
+        lesion_statistics (list of dicts): list of dictionaries containing lesion statistics, where each dictionary has the following keys: 'label', 'size', 'CoM' and 'slices'
+    """
+    fig, axes = plt.subplots(2, 3, figsize=(30, 20))
+    axs = axes.ravel()
+    METRICS_ASYMMETRY = ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)',
+                         'MEAN(symmetry_dice_AP)', 'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)']
+    
+    METRIC_TO_AXIS_ASYMMETRY = {
+    'MEAN(symmetry_dice_RL)': 'Symmetry Dice RL',
+    'MEAN(symmetry_hausdorff_RL)': 'Symmetry Hausdorff RL',
+    'MEAN(symmetry_difference_RL)': 'Symmetry Difference RL',
+    'MEAN(symmetry_dice_AP)': 'Symmetry Dice AP',
+    'MEAN(symmetry_hausdorff_AP)': 'Symmetry Hausdorff AP',
+    'MEAN(symmetry_difference_AP)': 'Symmetry Difference AP',
+    }
+
+    # Remove rows with NaN values
+    df_sub = df_sub.dropna(subset=METRICS_ASYMMETRY).reset_index(drop=True)
+    df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
+
+    number_of_subjects = df_hc['participant_id'].nunique()
+
+    # Loop across metrics
+    for index, metric in enumerate(METRICS_ASYMMETRY):
+        
+        # Plot spine-generic multi-subject data
+        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_hc, errorbar='sd', linewidth=2, color='black',
+            label=f'spine-generic all subjects (N = {number_of_subjects})')
+        # Plot the first metric in purple (corresponding to the right-left symmetry)
+        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
+                        label=f'{subID}')
+        
+        ymin, ymax = axs[index].get_ylim()
+
+        # Add legend
+        if index == 0:
+            axs[index].legend(loc='upper right', fontsize=TICKS_FONT_SIZE)
+        else:
+            axs[index].get_legend().remove()
+
+
+        # Add master title
+        plt.suptitle(f'Asymetry plots for {subID} across axial slices and vertebral levels',
+                     fontweight='bold', fontsize=LABELS_FONT_SIZE, y=0.92)
+
+        # Add labels
+        axs[index].set_ylabel(METRIC_TO_AXIS_ASYMMETRY[metric], fontsize=LABELS_FONT_SIZE)
+        axs[index].set_xlabel('Axial Slice #', fontsize=LABELS_FONT_SIZE)
+        # Increase xticks and yticks font size
+        axs[index].tick_params(axis='both', which='major', labelsize=TICKS_FONT_SIZE)
+
+        # Remove spines
+        axs[index].spines['right'].set_visible(False)
+        axs[index].spines['left'].set_visible(False)
+        axs[index].spines['top'].set_visible(False)
+        axs[index].spines['bottom'].set_visible(True)
+
+        # Get indices of slices corresponding vertebral levels
+        vert, ind_vert, ind_vert_mid = get_vert_indices(df_sub, single_subject=True)
+        vert = [int(v) for v in vert]  # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
+        # Insert a vertical line for each intervertebral disc
+        for idx, x in enumerate(ind_vert[1:-1]):
+            axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
+
+        # Insert a text label for each vertebral level
+        for idx, x in enumerate(ind_vert_mid, 0):
+            # Deal with labels
+            if vert[x] > 19:
+                level = 'L' + str(vert[x] - 19)
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+            if vert[x] > 7:
+                level = 'T' + str(vert[x] - 7)
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+            else:
+                level = 'C' + str(vert[x])
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+
+        # Invert x-axis
+        axs[index].invert_xaxis()
+        # Add only horizontal grid lines
+        axs[index].yaxis.grid(True)
+        # Move grid to background (i.e. behind other elements)
+        axs[index].set_axisbelow(True)
+
+    # Save figure
+    plt.savefig(path_out_png, dpi=300, bbox_inches='tight')
+    print('Figure saved: ' + path_out_png)
+
+    return None
