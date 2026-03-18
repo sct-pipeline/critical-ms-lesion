@@ -303,8 +303,8 @@ def plot_asymmetry_with_hc(asymmetry_csv, path_hc_data, lesion_statistics, outpu
     # Build output plot path
     path_asymmetry_plot_hc = os.path.join(output_path, "asymmetry_plot_hc.png")
 
-    # if os.path.exists(path_asymmetry_plot_hc):
-    #     return path_asymmetry_plot_hc
+    if os.path.exists(path_asymmetry_plot_hc):
+        return path_asymmetry_plot_hc
     
     # Load the asymmetry results
     df_asymmetry = pd.read_csv(asymmetry_csv)
