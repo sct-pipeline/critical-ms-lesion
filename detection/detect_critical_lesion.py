@@ -19,6 +19,7 @@ import nibabel as nib
 import numpy as np
 from scipy import ndimage
 import pandas as pd
+import json
 from generate_csa_plot import load_normative_data, load_single_subject_data, create_lineplot, create_lineplot_asymetry, create_lineplot_asymetry_with_hc, load_normative_data_asymmetry
 
 
@@ -83,7 +84,7 @@ def run_vert_labeling(input_scan, output_path, qc_folder):
     return vert_levels
 
 
-def get_lesion_stats(lesion_mask):
+def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output_path, qc_folder):
     """
     This function loads the lesion mask and computes the statistics of each lesion (CoM and size).
     Input:
@@ -91,22 +92,35 @@ def get_lesion_stats(lesion_mask):
     Output:
         A list of dictionaries containing the statistics of each lesion (CoM and size)
     """
+    # Build the lesion stats output path
+    lesion_stats_path = os.path.join(output_path, "lesion_stats.json")
+
+    # If the lesion stats file already exists, we load it and return it
+    if os.path.exists(lesion_stats_path):
+        with open(lesion_stats_path, "r") as f:
+            lesion_stats = json.load(f)
+        return lesion_stats
+
+    # Build a temp output folder
+    temp_folder = os.path.join(output_path, "temp_lesion_stats")
+    os.makedirs(temp_folder, exist_ok=True)
+
     # Initialize the output dict
     lesion_stats = []
 
     # Load the lesion mask array
-    lesion_mask = nib.load(lesion_mask)
-    lesion_array = lesion_mask.get_fdata()
+    all_lesion_mask = nib.load(input_lesion_mask_path)
+    lesion_array = all_lesion_mask.get_fdata()
 
     # Get the unique lesion labels
     s = ndimage.generate_binary_structure(3,3)
     # Label connected components (lesions)
     labeled_lesions, num_lesions = ndimage.label(lesion_array, structure=s)
     # Get voxel volume
-    voxel_volume = np.prod(lesion_mask.header.get_zooms())
+    voxel_volume = np.prod(all_lesion_mask.header.get_zooms())
 
     # Get orientation
-    orientation = nib.aff2axcodes(lesion_mask.affine)
+    orientation = nib.aff2axcodes(all_lesion_mask.affine)
     IF_axis_index = orientation.index('I') if 'I' in orientation else (orientation.index('S') if 'S' in orientation else None)
 
     # For each lesion, compute its CoM and size
@@ -118,8 +132,31 @@ def get_lesion_stats(lesion_mask):
         lesion_com = ndimage.center_of_mass(lesion_mask)
         lesion_com = (float(lesion_com[0]), float(lesion_com[1]), float(lesion_com[2]))
         # We compute a list of all ax slices where the lesion is present
-        lesion_slices = set(np.where(lesion_mask)[IF_axis_index].tolist())
-        lesion_stats.append({"label": lesion_label, "size": lesion_size, "CoM": lesion_com, "slices": lesion_slices})
+        lesion_slices = list(set(np.where(lesion_mask)[IF_axis_index].tolist()))
+
+        # For each lesion, we compute the slices indexes in the PAM-50 template
+        ## We save one mask per lesion in the temp folder
+        lesion_mask_nifti = nib.Nifti1Image(lesion_mask.astype(np.uint8), all_lesion_mask.affine, all_lesion_mask.header)
+        lesion_mask_path = os.path.join(temp_folder, f"lesion_{lesion_label}.nii.gz")
+        nib.save(lesion_mask_nifti, lesion_mask_path)
+        ## We label the spinal cord:
+        assert os.system(f"sct_label_vertebrae -i {image} -s {sc_mask} -discfile {vert_levels} -c t2 -qc {qc_folder} -ofolder {temp_folder}") == 0, "Error running the sct_label_vertebrae command"
+        ## We process the lesion segmentation
+        sc_mask_labeled = os.path.join(temp_folder, os.path.basename(sc_mask).replace(".nii.gz", "_labeled.nii.gz"))
+        output_csv = os.path.join(temp_folder, f"lesion_{lesion_label}_PAM50.csv")
+        assert os.system(f"sct_process_segmentation -i {lesion_mask_path} -vertfile {sc_mask_labeled} -perslice 1 -normalize-PAM50 1 -o {output_csv}") == 0, "Error running the sct_process_segmentation command"
+        ## Load the output csv file and extract the slices where the lesion is present
+        df_lesion = pd.read_csv(output_csv)
+        lesion_slices_pam50 = df_lesion[df_lesion["MEAN(area)"] > 0]["Slice (I->S)"].tolist()
+        lesion_slices_pam50 = list(set(lesion_slices_pam50))
+        lesion_stats.append({"label": lesion_label, "size": lesion_size, "CoM": lesion_com, "slices": lesion_slices, "slices_pam50": lesion_slices_pam50})
+
+    # Remove the temp folder
+    os.system(f"rm -rf {temp_folder}")
+
+    # Save the lesion statistics to a json file
+    with open(lesion_stats_path, "w") as f:
+        json.dump(lesion_stats, f)
 
     return lesion_stats
 
@@ -271,6 +308,11 @@ def plot_asymmetry_with_hc(asymmetry_csv, path_hc_data, lesion_statistics, outpu
     
     # Load the asymmetry results
     df_asymmetry = pd.read_csv(asymmetry_csv)
+    # We create a normalized difference column for the anterior and posterior quadrants (difference divided by the mean of the two quadrants)
+    df_asymmetry["NORM_DIFF(area_quadrant_anterior_left-right)"] = df_asymmetry["DIFF(area_quadrant_anterior_left-right)"] / df_asymmetry["MEAN(area_quadrant_anterior_left)"]
+    df_asymmetry["NORM_DIFF(area_quadrant_posterior_left-right)"] = df_asymmetry["DIFF(area_quadrant_posterior_left-right)"] / df_asymmetry["MEAN(area_quadrant_posterior_left)"]
+    df_asymmetry["DIFF(area_left-right)"] = df_asymmetry["MEAN(area_quadrant_anterior_left)"] + df_asymmetry["MEAN(area_quadrant_posterior_left)"] - df_asymmetry["MEAN(area_quadrant_anterior_right)"] - df_asymmetry["MEAN(area_quadrant_posterior_right)"]
+    df_asymmetry["NORM_DIFF(area_left-right)"] = df_asymmetry["DIFF(area_left-right)"] / (df_asymmetry["MEAN(area_quadrant_anterior_left)"] + df_asymmetry["MEAN(area_quadrant_posterior_left)"])
     # Get subject ID from output path
     subject_id = output_path.split("/")[-1]
     # Get min and max slice index from the asymmetry csv to load only the relevant slices from the healthy control data
@@ -281,6 +323,14 @@ def plot_asymmetry_with_hc(asymmetry_csv, path_hc_data, lesion_statistics, outpu
     
     # Load healthy control data
     df_hc = load_normative_data_asymmetry(path_hc_data, data_tsv, min_slice=min_slice_idx, max_slice=max_slice_idx)
+    # We create the diff columns for the healthy control group as well
+    df_hc["DIFF(area_quadrant_anterior_left-right)"] = df_hc["MEAN(area_quadrant_anterior_left)"] - df_hc["MEAN(area_quadrant_anterior_right)"]
+    df_hc["DIFF(area_quadrant_posterior_left-right)"] = df_hc["MEAN(area_quadrant_posterior_left)"] - df_hc["MEAN(area_quadrant_posterior_right)"]
+    df_hc["DIFF(area_left-right)"] = df_hc["MEAN(area_quadrant_anterior_left)"] + df_hc["MEAN(area_quadrant_posterior_left)"] - df_hc["MEAN(area_quadrant_anterior_right)"] - df_hc["MEAN(area_quadrant_posterior_right)"]
+    # We create the norm diff columns for the healthy control group as well
+    df_hc["NORM_DIFF(area_quadrant_anterior_left-right)"] = df_hc["DIFF(area_quadrant_anterior_left-right)"] / df_hc["MEAN(area_quadrant_anterior_left)"]
+    df_hc["NORM_DIFF(area_quadrant_posterior_left-right)"] = df_hc["DIFF(area_quadrant_posterior_left-right)"] / df_hc["MEAN(area_quadrant_posterior_left)"]
+    df_hc["NORM_DIFF(area_left-right)"] = df_hc["DIFF(area_left-right)"] / (df_hc["MEAN(area_quadrant_anterior_left)"] + df_hc["MEAN(area_quadrant_posterior_left)"])
 
     # Create the plot
     create_lineplot_asymetry_with_hc(df_asymmetry, df_hc, subject_id, path_asymmetry_plot_hc, lesion_statistics)
@@ -344,7 +394,7 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder, path_hc_
     lesion_mask = run_lesion_segmentation(input_scan, sc_mask, output_path, qc_folder)
     
     # For each lesion, we compute its CoM and size
-    lesion_statistics = get_lesion_stats(lesion_mask)
+    lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
 
     # Now we investigate the detection of spinal cord atrophy
     norm_csa_file = compute_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)

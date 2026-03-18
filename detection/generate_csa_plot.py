@@ -448,10 +448,12 @@ def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_
         path_out_png (str): path to output PNG file
         lesion_statistics (list of dicts): list of dictionaries containing lesion statistics, where each dictionary has the following keys: 'label', 'size', 'CoM' and 'slices'
     """
-    fig, axes = plt.subplots(2, 3, figsize=(30, 20))
+    fig, axes = plt.subplots(3, 3, figsize=(30, 20))
     axs = axes.ravel()
     METRICS_ASYMMETRY = ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)',
-                         'MEAN(symmetry_dice_AP)', 'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)']
+                         'MEAN(symmetry_dice_AP)', 'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)',
+                         'NORM_DIFF(area_quadrant_anterior_left-right)', 'NORM_DIFF(area_quadrant_posterior_left-right)',
+                         'NORM_DIFF(area_left-right)']
     
     METRIC_TO_AXIS_ASYMMETRY = {
     'MEAN(symmetry_dice_RL)': 'Symmetry Dice RL',
@@ -460,6 +462,9 @@ def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_
     'MEAN(symmetry_dice_AP)': 'Symmetry Dice AP',
     'MEAN(symmetry_hausdorff_AP)': 'Symmetry Hausdorff AP',
     'MEAN(symmetry_difference_AP)': 'Symmetry Difference AP',
+    'NORM_DIFF(area_quadrant_anterior_left-right)': 'Anterior Quadrant Area Normalized Diff (L-R)',
+    'NORM_DIFF(area_quadrant_posterior_left-right)': 'Posterior Quadrant Area Normalized Diff (L-R)',
+    'NORM_DIFF(area_left-right)': 'Left-Right Area Normalized Diff (L-R)'
     }
 
     # Remove rows with NaN values
@@ -470,6 +475,16 @@ def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_
 
     # Loop across metrics
     for index, metric in enumerate(METRICS_ASYMMETRY):
+
+        # We color the brackground colons where the lesions are
+        colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
+        for lesion_idx, lesion in enumerate(lesion_statistics):
+            lesion_slices = sorted(list(lesion['slices_pam50']))
+            start, end = lesion_slices[0], lesion_slices[-1]
+            # Create the x-range for this specific lesion
+            x_range = np.arange(start, end + 1) # +1 to include the last slice
+            # Fill the background from y=0 to y=1
+            axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
         
         # Plot spine-generic multi-subject data
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_hc, errorbar='sd', linewidth=2, color='black',
