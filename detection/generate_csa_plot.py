@@ -298,7 +298,7 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
     'MEAN(symmetry_hausdorff_RL)': 'Symmetry Hausdorff',
     'MEAN(symmetry_difference_RL)': 'Symmetry Difference',
     }
-    
+
     fig, axes = plt.subplots(3, 4, figsize=(30, 20))
     axs = axes.ravel()
 
@@ -577,8 +577,12 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
 
     # Loop across metrics
     for index, metric in enumerate(METRICS_LATERALITY):
-        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
-                        label=f'{subID}')
+        # One line per lesion (lesion_label column) in the subject, colored by lesion label
+        colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
+        for lesion_idx, lesion_label in enumerate(df_sub['lesion_label'].unique()):
+            df_sub_lesion = df_sub[df_sub['lesion_label'] == lesion_label]
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_lesion, linewidth=2, color=colors[lesion_idx % len(colors)], 
+                        label=f'Lesion {lesion_label}')
         
         ymin, ymax = axs[index].get_ylim()
 
