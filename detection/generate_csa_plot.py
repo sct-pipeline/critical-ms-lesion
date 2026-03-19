@@ -553,3 +553,88 @@ def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_
     print('Figure saved: ' + path_out_png)
 
     return None
+
+
+def create_lineplot_laterality(df_sub, subID, path_out_png): 
+    """
+    Create lineplot for laterality of lesions across vertebral levels.
+    Note: we are plotting slices not levels to avoid averaging across levels.
+    Args:
+        df_sub (pd.dataFrame): dataframe with the subject values
+        subID (str): subject ID
+        path_out_png (str): path to output PNG file
+    Output:
+        A PNG file with the lineplot for laterality of lesions across vertebral levels.
+    """
+
+    fig, axes = plt.subplots(2, 3, figsize=(20, 20))
+    axs = axes.ravel()
+    METRICS_LATERALITY = ["white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)"]
+
+    # Remove rows with NaN values
+    df_sub = df_sub.dropna(subset=METRICS_LATERALITY).reset_index(drop=True)
+    df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
+
+    # Loop across metrics
+    for index, metric in enumerate(METRICS_LATERALITY):
+        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
+                        label=f'{subID}')
+        
+        ymin, ymax = axs[index].get_ylim()
+
+        # Add legend
+        if index == 0:
+            axs[index].legend(loc='upper right', fontsize=TICKS_FONT_SIZE)
+        else:
+            axs[index].get_legend().remove()
+
+
+        # Add master title
+        plt.suptitle(f'Lesion laterality plots for {subID} across axial slices',
+                     fontweight='bold', fontsize=LABELS_FONT_SIZE, y=0.92)
+
+        # Add labels
+        axs[index].set_ylabel(metric, fontsize=LABELS_FONT_SIZE)
+        axs[index].set_xlabel('Axial Slice #', fontsize=LABELS_FONT_SIZE)
+        # Increase xticks and yticks font size
+        axs[index].tick_params(axis='both', which='major', labelsize=TICKS_FONT_SIZE)
+
+        # Remove spines
+        axs[index].spines['right'].set_visible(False)
+        axs[index].spines['left'].set_visible(False)
+        axs[index].spines['top'].set_visible(False)
+        axs[index].spines['bottom'].set_visible(True)
+
+        # Get indices of slices corresponding vertebral levels
+        vert, ind_vert, ind_vert_mid = get_vert_indices(df_sub, single_subject=True)
+        # vert = [int(v) for v in vert]  # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
+        # Insert a vertical line for each intervertebral disc
+        for idx, x in enumerate(ind_vert[1:-1]):
+            axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
+
+        # Insert a text label for each vertebral level
+        for idx, x in enumerate(ind_vert_mid, 0):
+            # Deal with labels
+            if vert[x] > 19:
+                level = 'L' + str(vert[x] - 19)
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+            if vert[x] > 7:
+                level = 'T' + str(vert[x] - 7)
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+            else:
+                level = 'C' + str(vert[x])
+                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+
+        # Invert x-axis
+        axs[index].invert_xaxis()
+        # Add only horizontal grid lines
+        axs[index].yaxis.grid(True)
+        # Move grid to background (i.e. behind other elements)
+        axs[index].set_axisbelow(True)
+
+    # Save figure
+    plt.savefig(path_out_png, dpi=300, bbox_inches='tight')
+    print('Figure saved: ' + path_out_png)
