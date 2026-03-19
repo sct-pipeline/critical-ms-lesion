@@ -567,7 +567,7 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
         A PNG file with the lineplot for laterality of lesions across vertebral levels.
     """
 
-    fig, axes = plt.subplots(2, 3, figsize=(20, 20))
+    fig, axes = plt.subplots(2, 3, figsize=(30, 20))
     axs = axes.ravel()
     METRICS_LATERALITY = ["white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)"]
 
@@ -611,7 +611,7 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
 
         # Get indices of slices corresponding vertebral levels
         vert, ind_vert, ind_vert_mid = get_vert_indices(df_sub, single_subject=True)
-        # vert = [int(v) for v in vert]  # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
+        vert = [int(v) for v in vert]  # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
         # Insert a vertical line for each intervertebral disc
         for idx, x in enumerate(ind_vert[1:-1]):
             axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
