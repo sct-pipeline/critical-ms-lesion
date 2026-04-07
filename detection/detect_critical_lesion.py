@@ -4,6 +4,8 @@ It takes as scan as input and outputs the detected "critical" lesions with their
 
 Input:
     -i: Path to the MRI scan (NIfTI format)
+    --age: age of the subject (used for atrophy detection)
+    --sex: sex of the subject (used for atrophy detection)
     --pam50: Path to the PAM50 template folder containing all the csv files
     -o: Path to the output folder
 
@@ -13,6 +15,7 @@ Output:
 Author: Pierre-Louis Benveniste
 """
 import argparse
+from datetime import datetime
 import os
 from pdb import run
 import nibabel as nib
@@ -26,6 +29,8 @@ from generate_csa_plot import load_normative_data, load_single_subject_data, cre
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Detect critical lesions in MRI scans.")
     parser.add_argument("-i", "--input", required=True, help="Path to the MRI scan (NIfTI format)")
+    parser.add_argument("--date-birth", required=True, type=str, help="Date of birth of the subject YYYYMMDD")
+    parser.add_argument("--sex", required=True, choices=["M", "F"], help="Sex of the subject (used for atrophy detection)")
     parser.add_argument("--pam50", required=True, help="Path to the PAM50 template folder containing all the csv files")
     parser.add_argument("--hc-data", required=True, help="Path to the healthy control data folder for asymmetry comparison")
     parser.add_argument("-o", "--output_folder", required=True, help="Path to the output folder")
@@ -187,12 +192,15 @@ def compute_normalized_csa(sc_mask, vert_levels, output_path, qc_folder):
     return output_csv
 
 
-def plot_csa(norm_csa_file, pam_50_csa_folder, output_path):
+def plot_csa(norm_csa_file, sex, age, hc_data, lesion_statistics, output_path):
     """
     Detect atrophies by comparing the normalized CSA with the PAM50 template.
     Input:
         norm_csa_file: Path to the normalized CSA file
-        pam_50_csa_folder: Path to the PAM50 template folder containing all the csv files
+        sex: Sex of the subject (used for atrophy detection)
+        age: Age of the subject (used for atrophy detection)
+        hc_data: Path to the healthy control data folder
+        lesion_statistics: List of dictionaries containing lesion statistics
         output_path: Path to the output folder
     Output:
         A list of detected atrophies
@@ -207,15 +215,15 @@ def plot_csa(norm_csa_file, pam_50_csa_folder, output_path):
     df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(norm_csa_file)   
 
     # Load spine-generic normative data
-    path_HC = os.path.join(pam_50_csa_folder, "spinal_cord")
-    path_participants_tsv = os.path.join(pam_50_csa_folder, "participants.tsv")
+    path_HC = hc_data
+    path_participants_tsv = os.path.join(hc_data, "participants.tsv")
     df_normative_data = load_normative_data(path_HC, path_participants_tsv, min_slice=min_slice_idx, max_slice=max_slice_idx)
-   
+    # Get the subject ID and the nb of subjects
     subject_id = output_path.split("/")[-1]
-    number_of_subjects = len(df_normative_data['participant_id'].unique())
+    number_of_subjects = len(df_normative_data[df_normative_data['sex'] == sex]['participant_id'].unique())
 
     # Create the plots
-    create_lineplot(df_normative_data, df_sub, subject_id, number_of_subjects, path_csa_plot) 
+    create_lineplot(df_normative_data, df_sub, subject_id, number_of_subjects, path_csa_plot, lesion_statistics, sex) 
     
     return path_csa_plot
 
@@ -293,11 +301,13 @@ def plot_asymmetry(asymmetry_csv, lesion_statistics, output_path):
     return path_asymmetry_plot
 
 
-def plot_asymmetry_with_hc(asymmetry_csv, path_hc_data, lesion_statistics, output_path):
+def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statistics, output_path):
     """
     This function plots the asymmetry results compared to a healthy control group.
     Input:
         asymmetry_csv: Path to the csv file containing the asymmetry results
+        sex: Sex of the subject
+        age: Age of the subject
         path_hc_data: Path to the healthy control data folder for asymmetry comparison
         lesion_statistics: List of dictionaries containing lesion statistics
         output_path: Path to the output folder
@@ -326,7 +336,7 @@ def plot_asymmetry_with_hc(asymmetry_csv, path_hc_data, lesion_statistics, outpu
     data_tsv = os.path.join(path_hc_data, "participants.tsv")
     
     # Load healthy control data
-    df_hc = load_normative_data_asymmetry(path_hc_data, data_tsv, min_slice=min_slice_idx, max_slice=max_slice_idx)
+    df_hc = load_normative_data(path_hc_data, data_tsv, min_slice=min_slice_idx, max_slice=max_slice_idx)
     # We create the diff columns for the healthy control group as well
     df_hc["DIFF(area_quadrant_anterior_left-right)"] = df_hc["MEAN(area_quadrant_anterior_left)"] - df_hc["MEAN(area_quadrant_anterior_right)"]
     df_hc["DIFF(area_quadrant_posterior_left-right)"] = df_hc["MEAN(area_quadrant_posterior_left)"] - df_hc["MEAN(area_quadrant_posterior_right)"]
@@ -337,7 +347,7 @@ def plot_asymmetry_with_hc(asymmetry_csv, path_hc_data, lesion_statistics, outpu
     df_hc["NORM_DIFF(area_left-right)"] = df_hc["DIFF(area_left-right)"] / (df_hc["MEAN(area_quadrant_anterior_left)"] + df_hc["MEAN(area_quadrant_posterior_left)"])
 
     # Create the plot
-    create_lineplot_asymetry_with_hc(df_asymmetry, df_hc, subject_id, path_asymmetry_plot_hc, lesion_statistics)
+    create_lineplot_asymetry_with_hc(df_asymmetry, sex, age, df_hc, subject_id, path_asymmetry_plot_hc, lesion_statistics)
 
     return path_asymmetry_plot_hc
 
@@ -454,7 +464,7 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
     return laterality_plot
 
 
-def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder, path_hc_data):
+def detect_critical_lesions(input_scan, sex, date_birth, output_path, pam_50_csa_folder, path_hc_data):
 
     # Build the output folder
     image_name = input_scan.split("/")[-1].replace(".nii.gz", "")
@@ -462,6 +472,10 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder, path_hc_
     os.makedirs(output_path, exist_ok=True)
     qc_folder = os.path.join(output_path, "qc")
     os.makedirs(qc_folder, exist_ok=True)
+
+    # Get scan date
+    scan_date = datetime.strptime(input_scan.split("/")[-1].split("_")[1].split("-")[1], "%Y%m%d")
+    age = int((scan_date - datetime.strptime(date_birth, "%Y%m%d")).days / 365.25)
 
     # Placeholder for the actual lesion detection logic
     print(f"Detecting critical lesions in scan: {input_scan}")
@@ -481,18 +495,19 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder, path_hc_
     norm_csa_file = compute_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
 
     # Now we plot the CSA compared to the PAM50
-    path_csa_plot = plot_csa(norm_csa_file, pam_50_csa_folder, output_path)
+    path_csa_plot = plot_csa(norm_csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
 
-    # Now we perform asymetry computation
-    asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder)
+    # # Now we perform asymetry computation
+    # asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder)
 
-    # Plot asymetry
-    path_asymmetry_plot = plot_asymmetry(asymetry_csv, lesion_statistics, output_path)
+    # # Plot asymetry
+    # path_asymmetry_plot = plot_asymmetry(asymetry_csv, lesion_statistics, output_path)
 
+    # Now compute asymetry with PAM50 normalization to be able to compare with healthy controls
     asymetry_csv_pam50 = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
     
     # Plot asymetry with HC group
-    path_asymmetry_plot_hc = plot_asymmetry_with_hc(asymetry_csv_pam50, path_hc_data, lesion_statistics, output_path)
+    path_asymmetry_plot_hc = plot_asymmetry_with_hc(asymetry_csv_pam50, sex, age, path_hc_data, lesion_statistics, output_path)
 
     # Detect laterality
     laterality_report_folder = detect_laterality(input_scan, lesion_mask, sc_mask, vert_levels, lesion_statistics, output_path, qc_folder)
@@ -503,4 +518,4 @@ def detect_critical_lesions(input_scan, output_path, pam_50_csa_folder, path_hc_
 
 if __name__ == "__main__":
     args = parse_arguments()
-    detect_critical_lesions(args.input, args.output_folder, args.pam50, args.hc_data)
+    detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.pam50, args.hc_data)

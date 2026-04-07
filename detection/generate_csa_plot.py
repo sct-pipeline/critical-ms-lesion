@@ -85,7 +85,8 @@ def load_normative_data(path_HC, path_participants, min_slice=None, max_slice=No
             df = pd.concat([df, df_subject], axis=0, ignore_index=True)
     # Get sub-id (e.g., sub-amu01) from Filename column and insert it as a new column called participant_id
     # Subject ID is the first characters of the filename till slash
-    df.insert(0, 'participant_id', df['Filename'].str.split('/').str[0])
+    df.insert(0, 'participant_id', df['Filename'].str.split('/').str[-1].str.split('_').str[0])
+
 
     # If a participants.tsv file is provided, insert columns sex, age and manufacturer from df_participants into df
     if path_participants:
@@ -93,7 +94,7 @@ def load_normative_data(path_HC, path_participants, min_slice=None, max_slice=No
         df = df.merge(df_participants[["age", "sex", "height", "weight", "manufacturer", "participant_id"]],
                       on='participant_id')
         # Recode age into age bins by 10 years (decades)
-        df['age'] = pd.cut(df['age'], bins=[10, 20, 30, 40, 50, 60], labels=AGE_DECADES)
+        # df['age'] = pd.cut(df['age'], bins=[10, 20, 30, 40, 50, 60], labels=AGE_DECADES)
 
     # Multiply solidity by 100 to get percentage (sct_process_segmentation computes solidity in the interval 0-1)
     df['MEAN(solidity)'] = df['MEAN(solidity)'] * 100
@@ -181,7 +182,7 @@ def fetch_subject_and_session(filename_path):
     return subjectID, sessionID
 
 
-def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, sex=None):
+def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, lesion_statistics, sex):
     """
     Create lineplot for individual metrics per vertebral levels.
     Note: we are plotting slices not levels to avoid averaging across levels.
@@ -191,6 +192,7 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, sex=No
         subID (str): subject ID
         number_of_subjects (int): number of subjects in spine-generic dataset
         path_out_png (str): path of the output png save
+        lesion_statistics (list): list of dictionaries containing lesion statistics
         sex (str): sex to filter spine-generic subjects on; possible options: 'M', 'F'
     """
 
@@ -199,16 +201,21 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, sex=No
 
     # Loop across metrics
     for index, metric in enumerate(METRICS):
+        # We color the brackground colons where the lesions are
+        colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
+        for lesion_idx, lesion in enumerate(lesion_statistics):
+            lesion_slices = sorted(list(lesion['slices_pam50']))
+            start, end = lesion_slices[0], lesion_slices[-1]
+            # Create the x-range for this specific lesion
+            x_range = np.arange(start, end + 1) # +1 to include the last slice
+            # Fill the background from y=0 to y=1
+            axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
+        
         # Note: we are plotting slices not levels to avoid averaging across levels
-        if sex:
-            # Plot spine-generic multi-subject data for a given sex
-            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df[df['sex'] == sex], errorbar='sd',
-                         linewidth=2, color=COLORS_SEX[sex],
-                         label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects})')
-        else:
-            # Plot spine-generic multi-subject data
-            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df, errorbar='sd', linewidth=2, color='black',
-                         label=f'spine-generic all subjects (N = {number_of_subjects})')
+        # Plot spine-generic multi-subject data for a given sex
+        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df[df['sex'] == sex], errorbar='sd',
+                        linewidth=2, color=COLORS_SEX[sex],
+                        label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects})')
 
         # Plot single subject data session 1
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_ses1, linewidth=2, color='green',
@@ -437,12 +444,14 @@ def load_normative_data_asymmetry(path_HC, path_participants, min_slice=None, ma
     return df
 
 
-def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_statistics):
+def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_png, lesion_statistics):
     """
     Create lineplot for individual metrics per vertebral levels.
     Note: we are plotting slices not levels to avoid averaging across levels.
     Args:
         df_sub (pd.dataFrame): dataframe with the subject values
+        sex: sex of the single subject
+        age: age of the single subject
         df_hc (pd.dataFrame): dataframe with the healthy control values
         subID (str): subject ID
         path_out_png (str): path to output PNG file
@@ -471,7 +480,8 @@ def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_
     df_sub = df_sub.dropna(subset=METRICS_ASYMMETRY).reset_index(drop=True)
     df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
 
-    number_of_subjects = df_hc['participant_id'].nunique()
+    # Number of subejct is the number of unique participant IDs in df_hc wiht the same sex
+    number_of_subjects = df_hc[df_hc['sex'] == sex]['participant_id'].nunique()
 
     # Loop across metrics
     for index, metric in enumerate(METRICS_ASYMMETRY):
@@ -486,9 +496,10 @@ def create_lineplot_asymetry_with_hc(df_sub, df_hc, subID, path_out_png, lesion_
             # Fill the background from y=0 to y=1
             axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
         
-        # Plot spine-generic multi-subject data
-        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_hc, errorbar='sd', linewidth=2, color='black',
-            label=f'spine-generic all subjects (N = {number_of_subjects})')
+        # Plot spine-generic multi-subject data for a given sex
+        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_hc[df_hc['sex'] == sex], errorbar='sd',
+                        linewidth=2, color=COLORS_SEX[sex],
+                        label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects})')
         # Plot the first metric in purple (corresponding to the right-left symmetry)
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
                         label=f'{subID}')
@@ -577,12 +588,22 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
 
     # Loop across metrics
     for index, metric in enumerate(METRICS_LATERALITY):
+
         # One line per lesion (lesion_label column) in the subject, colored by lesion label
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion_label in enumerate(df_sub['lesion_label'].unique()):
+            # Paint areas where column total % (all tracts) is above 0 (i.e., lesioned) with a color corresponding to the lesion label
             df_sub_lesion = df_sub[df_sub['lesion_label'] == lesion_label]
             sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_lesion, linewidth=2, color=colors[lesion_idx % len(colors)], 
                         label=f'Lesion {lesion_label}')
+            # We also want to point the background for each lesion
+            ## start is min slice where total % (all tracts) is above 0 for this lesion, end is max slice where total % (all tracts) is above 0 for this lesion
+            start = df_sub_lesion[df_sub_lesion["total % (all tracts)"] > 0]["Slice (I->S)"].min()
+            end = df_sub_lesion[df_sub_lesion["total % (all tracts)"] > 0]["Slice (I->S)"].max() 
+            # Create the x-range for this specific lesion
+            x_range = np.arange(start, end + 1) # +1 to include the last slice
+            # Fill the background from y=0 to y=1
+            axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
         
         ymin, ymax = axs[index].get_ylim()
 
