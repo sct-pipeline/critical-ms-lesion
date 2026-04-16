@@ -16,6 +16,7 @@ from tqdm import tqdm
 import nibabel as nib
 import numpy as np
 from scipy.ndimage import label
+import pandas as pd
 
 
 def parse_args():
@@ -37,6 +38,9 @@ def main(dataset_path, predicted_segmentation_folder, output_folder):
     # Build qc path
     qc_output_folder = os.path.join(output_folder, "QC")
     os.makedirs(qc_output_folder, exist_ok=True)
+
+    # Initialize a df which has columns lesion_mask_file, original_scan_file and critical_lesion (boolean)
+    df_lesion_qc = pd.DataFrame(columns=["lesion_mask_file", "original_scan_file", "critical_lesion"])
    
     # For each lesion segmentation file, we generate a QC file for each lesion
     for lesion_segmentation_file in tqdm(lesion_segmentation_files):
@@ -48,7 +52,8 @@ def main(dataset_path, predicted_segmentation_folder, output_folder):
         lesion_segmentation_nii = nib.load(lesion_segmentation_file)
         lesion_segmentation_data = lesion_segmentation_nii.get_fdata()
         # We label each connected component with a different label
-        labeled_lesions, num_lesions = label(lesion_segmentation_data)
+        s = np.ones((3, 3, 3))  # Define the structure for connectivity (26-connectivity)
+        labeled_lesions, num_lesions = label(lesion_segmentation_data, structure=s)
         print(f"Found {num_lesions} lesions in file {lesion_segmentation_file}")
         if num_lesions == 0:
             continue
@@ -65,7 +70,12 @@ def main(dataset_path, predicted_segmentation_folder, output_folder):
             nib.save(lesion_mask_nii, lesion_mask_file)
             # We generate the QC file for the current lesion mask
             assert os.system(f"sct_qc -i {original_scan_file} -p sct_deepseg_lesion -s {sc_mask_file} -d {lesion_mask_file} -plane axial -qc {qc_output_folder}") == 0, "Error running the sct_qc command"
+            # We add a line to the df
+            new_row = {"lesion_mask_file": lesion_mask_file, "original_scan_file": original_scan_file, "critical_lesion": None}
+            df_lesion_qc = pd.concat([df_lesion_qc, pd.DataFrame([new_row])], ignore_index=True)
 
+    # We save the df as a csv file
+    df_lesion_qc.to_csv(os.path.join(output_folder, "lesion_labels.csv"), index=False)
 
 if __name__ == "__main__":
     args = parse_args()
