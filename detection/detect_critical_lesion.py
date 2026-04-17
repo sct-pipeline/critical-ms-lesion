@@ -4,6 +4,7 @@ It takes as scan as input and outputs the detected "critical" lesions with their
 
 Input:
     -i: Path to the MRI scan (NIfTI format)
+    --lesion-seg: Path to the lesion segmentation mask (NIfTI format)
     --age: age of the subject (used for atrophy detection)
     --sex: sex of the subject (used for atrophy detection)
     --pam50: Path to the PAM50 template folder containing all the csv files
@@ -29,6 +30,7 @@ from generate_csa_plot import load_normative_data, load_single_subject_data, cre
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Detect critical lesions in MRI scans.")
     parser.add_argument("-i", "--input", required=True, help="Path to the MRI scan (NIfTI format)")
+    parser.add_argument("--lesion-seg", help="Path to the lesion segmentation mask (NIfTI format)")
     parser.add_argument("--date-birth", required=True, type=str, help="Date of birth of the subject YYYYMMDD")
     parser.add_argument("--sex", required=True, choices=["M", "F"], help="Sex of the subject (used for atrophy detection)")
     parser.add_argument("--pam50", required=True, help="Path to the PAM50 template folder containing all the csv files")
@@ -464,7 +466,7 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
     return laterality_plot
 
 
-def detect_critical_lesions(input_scan, sex, date_birth, output_path, pam_50_csa_folder, path_hc_data):
+def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask=None):
 
     # Build the output folder
     image_name = input_scan.split("/")[-1].replace(".nii.gz", "")
@@ -486,7 +488,8 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, pam_50_csa
     # Vert labeling
     vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
     # Lesion segmentation
-    lesion_mask = run_lesion_segmentation(input_scan, sc_mask, output_path, qc_folder)
+    if lesion_mask is None:
+        lesion_mask = run_lesion_segmentation(input_scan, sc_mask, output_path, qc_folder)
     
     # For each lesion, we compute its CoM and size
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
@@ -518,4 +521,4 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, pam_50_csa
 
 if __name__ == "__main__":
     args = parse_arguments()
-    detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.pam50, args.hc_data)
+    detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask=args.lesion_seg)
