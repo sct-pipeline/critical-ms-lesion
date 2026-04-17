@@ -39,10 +39,14 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def run_lesion_segmentation(input_scan, sc_mask, output_path, qc_folder):
+def run_lesion_segmentation(input_scan, sc_mask, lesion_mask_input, output_path, qc_folder):
 
     # Build the lesion mask output path
     lesion_mask = os.path.join(output_path, input_scan.split("/")[-1].replace(".nii.gz", "_label-lesion_seg.nii.gz"))
+
+    if lesion_mask_input is not None:
+        # Copy the lesion mask input to the lesion mask output path
+        os.system(f"cp {lesion_mask_input} {lesion_mask}")
     
     # Run the SCT command
     if os.path.exists(lesion_mask):
@@ -466,7 +470,7 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
     return laterality_plot
 
 
-def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask=None):
+def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None):
 
     # Build the output folder
     image_name = input_scan.split("/")[-1].replace(".nii.gz", "")
@@ -488,8 +492,7 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     # Vert labeling
     vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
     # Lesion segmentation
-    if lesion_mask is None:
-        lesion_mask = run_lesion_segmentation(input_scan, sc_mask, output_path, qc_folder)
+    lesion_mask = run_lesion_segmentation(input_scan, sc_mask, lesion_mask_input, output_path, qc_folder)
     
     # For each lesion, we compute its CoM and size
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
@@ -521,4 +524,4 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
 
 if __name__ == "__main__":
     args = parse_arguments()
-    detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask=args.lesion_seg)
+    detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)
