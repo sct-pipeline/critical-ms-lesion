@@ -63,10 +63,7 @@ def main():
         # Run the detection of critical lesions:
         detect_critical_lesions(mri_scan_path, sex, date_birth, subject_output_path, path_hc_data, lesion_mask_input=lesion_mask_path)
 
-        break
-
     return None
-
 
 
 if __name__ == "__main__":
