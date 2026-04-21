@@ -33,7 +33,7 @@ def parse_arguments():
     parser.add_argument("--lesion-seg", help="Path to the lesion segmentation mask (NIfTI format)")
     parser.add_argument("--date-birth", required=True, type=str, help="Date of birth of the subject YYYYMMDD")
     parser.add_argument("--sex", required=True, choices=["M", "F"], help="Sex of the subject (used for atrophy detection)")
-    parser.add_argument("--pam50", required=True, help="Path to the PAM50 template folder containing all the csv files")
+    parser.add_argument("--pam50", help="Path to the PAM50 template folder containing all the csv files")
     parser.add_argument("--hc-data", required=True, help="Path to the healthy control data folder for asymmetry comparison")
     parser.add_argument("-o", "--output_folder", required=True, help="Path to the output folder")
     return parser.parse_args()
@@ -159,11 +159,30 @@ def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output
         ## We process the lesion segmentation
         sc_mask_labeled = os.path.join(temp_folder, os.path.basename(sc_mask).replace(".nii.gz", "_labeled.nii.gz"))
         output_csv = os.path.join(temp_folder, f"lesion_{lesion_label}_PAM50.csv")
-        assert os.system(f"sct_process_segmentation -i {lesion_mask_path} -vertfile {sc_mask_labeled} -perslice 1 -normalize-PAM50 1 -o {output_csv}") == 0, "Error running the sct_process_segmentation command"
+
+        # If the lesion segmentation spends only one slice, we need to dilate by one slice in S-I axis
+        if len(lesion_slices) == 1:
+            # dilation is 0x0x1 if dilating index is 2, else it is 0x1x0 if dilating index is 1, else it is 1x0x0 if dilating index is 0
+            if IF_axis_index == 2: dilation = "0x0x1"
+            elif IF_axis_index == 1: dilation = "0x1x0"
+            else: dilation = "1x0x0"
+            temp_dilated_lesion_mask = os.path.join(temp_folder, os.path.basename(lesion_mask_path).replace(".nii.gz", "_dilated.nii.gz"))
+            assert os.system(f"sct_maths -i {lesion_mask_path} -shape ball -dilate {dilation} -o {temp_dilated_lesion_mask}") == 0, "Error running the sct_maths command to dilate the lesion mask"
+            # Then we process the segmentation with the dilated lesion mask to get the PAM50 slices corresponding
+            assert os.system(f"sct_process_segmentation -i {temp_dilated_lesion_mask} -vertfile {sc_mask_labeled} -perslice 1 -normalize-PAM50 1 -o {output_csv}") == 0, "Error running the sct_process_segmentation command"
+        
+        else:
+            assert os.system(f"sct_process_segmentation -i {lesion_mask_path} -vertfile {sc_mask_labeled} -perslice 1 -normalize-PAM50 1 -o {output_csv}") == 0, "Error running the sct_process_segmentation command"
         ## Load the output csv file and extract the slices where the lesion is present
         df_lesion = pd.read_csv(output_csv)
         lesion_slices_pam50 = df_lesion[df_lesion["MEAN(area)"] > 0]["Slice (I->S)"].tolist()
+        lesion_slices_pam50 = sorted(lesion_slices_pam50)
         lesion_slices_pam50 = list(set(lesion_slices_pam50))
+        ## If we had previously dilated the lesion mask, we need to remove some slices from the lesion_slices_pam50
+        if len(lesion_slices) == 1:
+            # We have to remove the first 1/3 and last 1/3 of the lesion_slices_pam50 to be sure to keep only the slices corresponding to the original lesion mask
+            lesion_slices_pam50 = lesion_slices_pam50[len(lesion_slices_pam50)//3: -len(lesion_slices_pam50)//3]
+        
         lesion_stats.append({"label": lesion_label, "size": lesion_size, "CoM": lesion_com, "slices": lesion_slices, "slices_pam50": lesion_slices_pam50})
 
     # Remove the temp folder
