@@ -314,14 +314,17 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
         lesion_statistics: List of dictionaries containing lesion statistics
         output_path: Path to the output folder
     Output:
-        A list of detected atrophies
+        path_csa_plot: Path to the output plot comparing the subject's CSA with the healthy control group
+        path_csa_plot_normalized: Path to the output plot comparing the subject's normalized CSA with the healthy control group
+        path_csv_normalized: Path to the output CSV file containing the subject's normalized CSA values
     """
     # Build output plot path
     path_csa_plot = os.path.join(output_path, "csa_plot.png")
     path_csa_plot_normalized = os.path.join(output_path, "csa_plot_normalized.png")
+    path_csv_normalized = os.path.join(output_path, "csa_normalized.csv")
 
     if os.path.exists(path_csa_plot):
-        return path_csa_plot
+        return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
 
     # Load the subject normalized CSA data
     df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(pam50_norm_csa_file)   
@@ -339,14 +342,13 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
     # Create the plots
     create_lineplot(df_normative_data_filtered, df_sub, subject_id, number_of_subjects, path_csa_plot, lesion_statistics, sex, age_group)
 
-    #### Normalization fo the metrics values with the healthy control group and plot the normalized values
-    path_csv_normalized = os.path.join(output_path, "csa_normalized.csv")
+    # Normalization fo the metrics values with the healthy control group and plot the normalized values
     df_sub_normalized = normalize_outside_lesion(df_normative_data_filtered, df_sub, lesion_statistics, path_csv_normalized)
 
     # Now we create another plot after the normalization
     create_lineplot(df_normative_data_filtered, df_sub_normalized, subject_id, number_of_subjects, path_csa_plot_normalized, lesion_statistics, sex, age_group)
 
-    return path_csa_plot
+    return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
 
 
 def compute_asymmetry(image, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=False):
@@ -438,9 +440,10 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     # Build output plot path
     path_asymmetry_plot_hc = os.path.join(output_path, "asymmetry_plot_hc.png")
     path_asymmetry_plot_hc_normalized = os.path.join(output_path, "asymmetry_plot_hc_normalized.png")
-
+    path_csv_normalized = os.path.join(output_path, "asymmetry_normalized.csv")
+    
     if os.path.exists(path_asymmetry_plot_hc):
-        return path_asymmetry_plot_hc
+        return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
     
     # Load the asymmetry results
     df_asymmetry = pd.read_csv(asymmetry_csv)
@@ -449,6 +452,8 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     df_asymmetry["NORM_DIFF(area_quadrant_posterior_left-right)"] = df_asymmetry["DIFF(area_quadrant_posterior_left-right)"] / df_asymmetry["MEAN(area_quadrant_posterior_left)"]
     df_asymmetry["DIFF(area_left-right)"] = df_asymmetry["MEAN(area_quadrant_anterior_left)"] + df_asymmetry["MEAN(area_quadrant_posterior_left)"] - df_asymmetry["MEAN(area_quadrant_anterior_right)"] - df_asymmetry["MEAN(area_quadrant_posterior_right)"]
     df_asymmetry["NORM_DIFF(area_left-right)"] = df_asymmetry["DIFF(area_left-right)"] / (df_asymmetry["MEAN(area_quadrant_anterior_left)"] + df_asymmetry["MEAN(area_quadrant_posterior_left)"])
+    # Save the updated dataframe to the same csv file
+    df_asymmetry.to_csv(asymmetry_csv, index=False)
     # Get subject ID from output path
     subject_id = output_path.split("/")[-1]
     # Get min and max slice index from the asymmetry csv to load only the relevant slices from the healthy control data
@@ -474,15 +479,14 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     # Create the plot
     create_lineplot_asymetry_with_hc(df_asymmetry, sex, age, df_hc_filtered, subject_id, path_asymmetry_plot_hc, lesion_statistics, age_group)
 
-    #### Normalization fo the metrics values with the healthy control group and plot the normalized values
-    path_csv_normalized = os.path.join(output_path, "asymmetry_normalized.csv")
+    # Normalization fo the metrics values with the healthy control group and plot the normalized values
     df_asymmetry_normalized = normalize_outside_lesion(df_hc_filtered, df_asymmetry, lesion_statistics, path_csv_normalized, asymmetry=True)
 
     # Now we create another plot after the normalization
     create_lineplot_asymetry_with_hc(df_asymmetry_normalized, sex, age, df_hc_filtered, subject_id, path_asymmetry_plot_hc_normalized, lesion_statistics, age_group)
 
 
-    return path_asymmetry_plot_hc
+    return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
 
 
 def detect_laterality(image, lesion_mask, sc_mask, discs_levels, lesion_statistics, output_path, qc_folder):
@@ -563,9 +567,15 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
     """
     # Build output plot path
     laterality_plot = os.path.join(output_path, "laterality_plot.png")
+    dict_laterality_reports = {}
+    for lesion in lesion_statistics:
+        lesion_label = lesion["label"]
+        xlsx_path = os.path.join(laterality_report_folder, lesion_mask.split("/")[-1].replace(".nii.gz", f"_lesion_{lesion_label}_analysis.xlsx"))
+        # Add the path to the xlsx to the dict
+        dict_laterality_reports[lesion_label] = xlsx_path
 
     if os.path.exists(laterality_plot):
-        return laterality_plot
+        return laterality_plot, dict_laterality_reports
 
     # Initialize the dataframe of laterality funiculi for each lesion
     df_laterality = pd.DataFrame(columns=["Slice (I->S)", "lesion_label", "white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)", "vert_level"])
@@ -573,8 +583,7 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
     # Load the laterality report
     # There is one report per lesion in the xlsx file:
     for lesion in lesion_statistics:
-        lesion_label = lesion["label"]
-        xlsx_path = os.path.join(laterality_report_folder, lesion_mask.split("/")[-1].replace(".nii.gz", f"_lesion_{lesion_label}_analysis.xlsx")) 
+        xlsx_path = dict_laterality_reports[lesion["label"]]
         # We load the report and extract the laterality information
         xls = pd.ExcelFile(xlsx_path)
         ## We only keep page: lesion#1_distribution
@@ -586,7 +595,7 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
         ## Add this df to the df_laterality dataframe with the lesion label as index
         df_lesion["lesion_label"] = lesion_label
         df_laterality = pd.concat([df_laterality, df_lesion[["Slice (I->S)", "vert_level", "lesion_label", "white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)"]]], ignore_index=True)
-    
+        
     # Rename the vert_level column to VertLevel
     df_laterality = df_laterality.rename(columns={"vert_level": "VertLevel"})
 
@@ -594,7 +603,92 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
     sub_ID = output_path.split("/")[-1]
     create_lineplot_laterality(df_laterality, sub_ID, laterality_plot)
 
-    return laterality_plot
+    return laterality_plot, dict_laterality_reports
+
+
+def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, asymetry_csv_pam50, asymetry_csv_pam50_normalized, dict_laterality_reports, output_path):
+    """
+    This function aggregates the results for all computed data. Instead of having measures for each slices, we have measures for each lesions.
+    """
+    # Build output path
+    subject_report_csv = os.path.join(output_path, "subject_report.csv")
+
+    if os.path.exists(subject_report_csv):
+        return subject_report_csv
+
+    # Initialize the dataframe of the subject report
+    csa_metrics = ['MEAN(area)', 'MEAN(diameter_AP)', 'MEAN(diameter_RL)', 'MEAN(compression_ratio)', 'MEAN(eccentricity)', 'MEAN(solidity)']
+    asymmetry_metrics = ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)','MEAN(symmetry_dice_AP)',
+                         'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)','NORM_DIFF(area_quadrant_anterior_left-right)',
+                         'NORM_DIFF(area_quadrant_posterior_left-right)', 'NORM_DIFF(area_left-right)']
+    laterality_metrics = ['PAM50_00', 'PAM50_01', 'PAM50_02', 'PAM50_03', 'PAM50_04', 'PAM50_05', 'PAM50_06', 'PAM50_07', 'PAM50_08', 'PAM50_09',
+                            'PAM50_10', 'PAM50_11', 'PAM50_12', 'PAM50_13', 'PAM50_14', 'PAM50_15','PAM50_16', 'PAM50_17', 'PAM50_18', 'PAM50_19',
+                            'PAM50_20', 'PAM50_21', 'PAM50_22', 'PAM50_23', 'PAM50_24', 'PAM50_25', 'PAM50_26', 'PAM50_27', 'PAM50_28', 'PAM50_29',
+                            'PAM50_30', 'PAM50_31', 'PAM50_32', 'PAM50_33', 'PAM50_34', 'PAM50_35', 'total % (all tracts)', 'white matter', 
+                            'gray matter', 'dorsal columns', 'lateral funiculi', 'ventral funiculi']
+    
+    # Initialize a sub df
+    sub_df = pd.DataFrame()
+
+    # Iterate over the lesions
+    for lesion in lesion_statistics:
+        # Initialize a dictionary to store the results for this lesion
+        lesion_report = {"lesion_label": lesion["label"], "lesion_size": lesion["size"]}
+        # Get the slices corresponding to the lesion in the PAM50 space
+        lesion_slices_pam50 = lesion["slices_pam50"]
+        lesion_slices = lesion["slices"]
+
+        # First we deal with the csa metrics:
+        df_csa = pd.read_csv(csa_file)
+        df_csa_normalized = pd.read_csv(csa_file_normalized)
+        for csa_metric in csa_metrics:
+            # We compute the mean of the metric on the lesion slices in the PAM50 space
+            lesion_report[csa_metric+"_mean"] = df_csa[df_csa["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].mean()
+            lesion_report[csa_metric+"_max"] = df_csa[df_csa["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].max()
+            lesion_report[csa_metric+"_min"] = df_csa[df_csa["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].min()
+            lesion_report[csa_metric+"_std"] = df_csa[df_csa["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].std()
+            # We compute the mean of the normalized metric on the lesion slices in the PAM50 space
+            lesion_report[csa_metric+"_normalized_mean"] = df_csa_normalized[df_csa_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].mean()
+            lesion_report[csa_metric+"_normalized_max"] = df_csa_normalized[df_csa_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].max()
+            lesion_report[csa_metric+"_normalized_min"] = df_csa_normalized[df_csa_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].min()
+            lesion_report[csa_metric+"_normalized_std"] = df_csa_normalized[df_csa_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].std()
+
+        # Now same with the asymmetry measures
+        df_asymmetry = pd.read_csv(asymetry_csv_pam50)
+        df_asymmetry_normalized = pd.read_csv(asymetry_csv_pam50_normalized)
+        for asymmetry_metric in asymmetry_metrics:
+            # We compute the mean of the metric on the lesion slices in the PAM50 space
+            lesion_report[asymmetry_metric+"_mean"] = df_asymmetry[df_asymmetry["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].mean()
+            lesion_report[asymmetry_metric+"_max"] = df_asymmetry[df_asymmetry["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].max()
+            lesion_report[asymmetry_metric+"_min"] = df_asymmetry[df_asymmetry["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].min()
+            lesion_report[asymmetry_metric+"_std"] = df_asymmetry[df_asymmetry["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].std()
+            # We compute the mean of the normalized metric on the lesion slices in the PAM50 space
+            lesion_report[asymmetry_metric+"_normalized_mean"] = df_asymmetry_normalized[df_asymmetry_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].mean()
+            lesion_report[asymmetry_metric+"_normalized_max"] = df_asymmetry_normalized[df_asymmetry_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].max()
+            lesion_report[asymmetry_metric+"_normalized_min"] = df_asymmetry_normalized[df_asymmetry_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].min()
+            lesion_report[asymmetry_metric+"_normalized_std"] = df_asymmetry_normalized[df_asymmetry_normalized["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].std()
+
+        # Now same for the laterality measures:
+        xlsx_path = dict_laterality_reports[lesion["label"]]
+        xls = pd.ExcelFile(xlsx_path)
+        df_laterality = pd.read_excel(xls, 'lesion#1_distribution')
+        # Remove the last line corresponding to the total lesion volume
+        df_laterality = df_laterality[:-1]
+        # Change column row to int format
+        df_laterality["row"] = df_laterality["row"].astype(int)
+        for laterality_metric in laterality_metrics:
+            lesion_report[laterality_metric+"_mean"] = df_laterality[df_laterality["row"].isin(lesion_slices)][laterality_metric].mean()
+            lesion_report[laterality_metric+"_max"] = df_laterality[df_laterality["row"].isin(lesion_slices)][laterality_metric].max()
+            lesion_report[laterality_metric+"_min"] = df_laterality[df_laterality["row"].isin(lesion_slices)][laterality_metric].min()
+            lesion_report[laterality_metric+"_std"] = df_laterality[df_laterality["row"].isin(lesion_slices)][laterality_metric].std()
+        
+        # We add the lesion report to the sub df
+        sub_df = pd.concat([sub_df, pd.DataFrame([lesion_report])], ignore_index=True)
+    
+    # Save the sub df to a csv file
+    sub_df.to_csv(subject_report_csv, index=False)
+
+    return subject_report_csv
 
 
 def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None):
@@ -625,10 +719,10 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
 
     # Now we investigate the detection of spinal cord atrophy
-    pam50_normalized_csa_file = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
+    csa_file = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
 
     # Now we plot the CSA compared to the PAM50
-    path_csa_plot = plot_csa(pam50_normalized_csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
+    path_csa_plot, path_csa_plot_normalized, csa_file_normalized = plot_csa(csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
 
     # # Now we perform asymetry computation
     # asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder)
@@ -640,13 +734,16 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     asymetry_csv_pam50 = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
     
     # Plot asymetry with HC group
-    path_asymmetry_plot_hc = plot_asymmetry_with_hc(asymetry_csv_pam50, sex, age, path_hc_data, lesion_statistics, output_path)
+    path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, asymetry_csv_pam50_normalized = plot_asymmetry_with_hc(asymetry_csv_pam50, sex, age, path_hc_data, lesion_statistics, output_path)
 
     # Detect laterality
     laterality_report_folder = detect_laterality(input_scan, lesion_mask, sc_mask, vert_levels, lesion_statistics, output_path, qc_folder)
 
     # Plot laterality results
-    laterality_plot = plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, output_path)
+    laterality_plot, dict_laterality_reports = plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, output_path)
+
+    # Aggregate metrics per subject
+    subject_wise_report_csv_path = aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, asymetry_csv_pam50, asymetry_csv_pam50_normalized, dict_laterality_reports, output_path)
 
 
 if __name__ == "__main__":

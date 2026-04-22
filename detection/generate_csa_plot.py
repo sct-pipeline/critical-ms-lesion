@@ -123,6 +123,9 @@ def load_single_subject_data(path_single_subject):
     # Multiply solidity by 100 to get percentage (sct_process_segmentation computes solidity in the interval 0-1)
     df_single_subject['MEAN(solidity)'] = df_single_subject['MEAN(solidity)'] * 100
 
+    # Save and overwrite the csv file with the new columns
+    df_single_subject.to_csv(path_single_subject, index=False)
+
     # Get the min and max slice number from the single subject data
     single_subject_min = df_single_subject['Slice (I->S)'].min()
     single_subject_max = df_single_subject['Slice (I->S)'].max()
