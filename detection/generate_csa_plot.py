@@ -182,7 +182,7 @@ def fetch_subject_and_session(filename_path):
     return subjectID, sessionID
 
 
-def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, lesion_statistics, sex):
+def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, lesion_statistics, sex, age_group):
     """
     Create lineplot for individual metrics per vertebral levels.
     Note: we are plotting slices not levels to avoid averaging across levels.
@@ -194,6 +194,7 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, lesion
         path_out_png (str): path of the output png save
         lesion_statistics (list): list of dictionaries containing lesion statistics
         sex (str): sex to filter spine-generic subjects on; possible options: 'M', 'F'
+        age_group (str): age group to filter spine-generic subjects on; possible options: '10-20', '21-30', '31-40', '41-50', '51-60'
     """
 
     fig, axes = plt.subplots(2, 3, figsize=(20, 10))
@@ -215,7 +216,7 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, lesion
         # Plot spine-generic multi-subject data for a given sex
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df[df['sex'] == sex], errorbar='sd',
                         linewidth=2, color=COLORS_SEX[sex],
-                        label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects})')
+                        label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects}) for age group {age_group}')
 
         # Plot single subject data session 1
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_ses1, linewidth=2, color='green',
@@ -444,7 +445,7 @@ def load_normative_data_asymmetry(path_HC, path_participants, min_slice=None, ma
     return df
 
 
-def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_png, lesion_statistics):
+def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_png, lesion_statistics, age_group):
     """
     Create lineplot for individual metrics per vertebral levels.
     Note: we are plotting slices not levels to avoid averaging across levels.
@@ -456,6 +457,7 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
         subID (str): subject ID
         path_out_png (str): path to output PNG file
         lesion_statistics (list of dicts): list of dictionaries containing lesion statistics, where each dictionary has the following keys: 'label', 'size', 'CoM' and 'slices'
+        age_group (str): age group of the subject
     """
     fig, axes = plt.subplots(3, 3, figsize=(30, 20))
     axs = axes.ravel()
@@ -499,7 +501,7 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
         # Plot spine-generic multi-subject data for a given sex
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_hc[df_hc['sex'] == sex], errorbar='sd',
                         linewidth=2, color=COLORS_SEX[sex],
-                        label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects})')
+                        label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects}) for age group {age_group}')
         # Plot the first metric in purple (corresponding to the right-left symmetry)
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
                         label=f'{subID}')

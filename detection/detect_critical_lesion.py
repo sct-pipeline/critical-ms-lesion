@@ -195,9 +195,9 @@ def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output
     return lesion_stats
 
 
-def compute_normalized_csa(sc_mask, vert_levels, output_path, qc_folder):
+def compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder):
     """
-    This function computes the spinal cord CSA at each vertebral level and normalizes it based on the PAM50 template.
+    This function computes the spinal cord CSA at each vertebral level and translates to the PAM50 template.
 
     Input:
         sc_mask: Path to the SC segmentation mask (NIfTI format)
@@ -217,11 +217,97 @@ def compute_normalized_csa(sc_mask, vert_levels, output_path, qc_folder):
     return output_csv
 
 
-def plot_csa(norm_csa_file, sex, age, hc_data, lesion_statistics, output_path):
+def filter_normative_data(df_normative_data, sex, age):
     """
-    Detect atrophies by comparing the normalized CSA with the PAM50 template.
+    This functions filters the normative data to keep only the subjects:
+        - of the same sex
+        - in the same 10-year age group (if nobody in the same 10-year age group, we keep the closest age group (for example if a subject is 71 and nobody is between 70 and 80, we keep the subjects between 60 and 70 or between 80 and 90 depending on which group has the closest mean age to the subject's age))
     Input:
-        norm_csa_file: Path to the normalized CSA file
+        - df_normative_data: Dataframe containing the normative data for the healthy control group
+        - sex
+        - age
+    Output:
+        - df_normative_data_filtered: Dataframe containing the filtered normative data for the healthy control group
+        - age_group: the age group that was kept (either the same 10-year age group or the closest one)
+    """
+    # 1. Filter by sex first
+    df_filtered = df_normative_data[df_normative_data['sex'] == sex].copy()
+    # 2. Define the target 10-year age group (e.g., 71 -> [70, 80))
+    lower_bound = (age // 10) * 10
+    upper_bound = lower_bound + 10
+    # Attempt to filter for the specific age group
+    df_target_group = df_filtered[
+        (df_filtered['age'] >= lower_bound) & 
+        (df_filtered['age'] < upper_bound)
+    ]
+    # 3. Fallback logic: If no subjects in the 10th age group
+    if df_target_group.empty:
+        # Create a helper column to identify decades
+        df_filtered['decade'] = (df_filtered['age'] // 10) * 10
+        # Calculate the mean age of each available decade group
+        group_means = df_filtered.groupby('decade')['age'].mean()
+        # Find the decade whose mean age is closest to the subject's age
+        closest_decade = (group_means - age).abs().idxmin()
+        df_target_group = df_filtered[df_filtered['decade'] == closest_decade]
+        age_group = f"{closest_decade}-{closest_decade + 10}"
+
+    else:
+        age_group = f"{lower_bound}-{upper_bound}"
+    
+    return df_target_group.drop(columns=['decade'], errors='ignore'), age_group
+
+
+def normalize_outside_lesion(df_normative_data, df_sub, lesion_statistics, path_out_csv, asymmetry=False):
+    """
+    This function normalizes the subject's CSA values with the healthy control group and plots the normalized values.
+    The subject's values are already in the PAM50 space. 
+    We want to bring the mean and std to that of the HC data but we want to compute the normalization on areas outside of the lesion to avoid normalizing with pathological values.
+    Input:
+        df_normative_data: Dataframe containing the normative data for the healthy control group
+        df_sub: Dataframe containing the subject's data in the PAM50 space
+        lesion_statistics: List of dictionaries containing lesion statistics
+        path_out_csv: Path to the output CSV file
+    Output:
+        df_sub_normalized: Dataframe containing the subject's normalized data in the PAM50 space
+    """
+    # Get the slices corresponding to the lesions in the PAM50 space
+    lesion_slices_pam50 = []
+    for lesion in lesion_statistics:
+        lesion_slices_pam50.extend(lesion["slices_pam50"])
+    # Get all the slides of the subject in the PAM50 space
+    subject_slices_pam50 = df_sub["Slice (I->S)"].tolist()
+    # Build slices to use for normalization by keeping only the slices that are not in the lesion_slices_pam50
+    slices_for_normalization = [slice for slice in subject_slices_pam50 if slice not in lesion_slices_pam50]
+    
+    # We normlaize the following metrics:
+    METRICS = ['MEAN(area)', 'MEAN(diameter_AP)', 'MEAN(diameter_RL)', 'MEAN(compression_ratio)', 'MEAN(eccentricity)',
+           'MEAN(solidity)']
+    
+    if asymmetry:
+        METRICS = ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)',
+                    'MEAN(symmetry_dice_AP)', 'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)',
+                    'NORM_DIFF(area_quadrant_anterior_left-right)', 'NORM_DIFF(area_quadrant_posterior_left-right)',
+                    'NORM_DIFF(area_left-right)']
+    
+    df_sub_normalized = df_sub.copy()
+    # For each metric, we compute the mean and std of the normative data on the slices outside of the lesion but in subject
+    for metric in METRICS:
+        normative_mean = df_normative_data[df_normative_data["Slice (I->S)"].isin(slices_for_normalization)][metric].mean()
+        normative_std = df_normative_data[df_normative_data["Slice (I->S)"].isin(slices_for_normalization)][metric].std()
+        # We normalize the subject's metric by bringing the mean and std to that of the normative data
+        df_sub_normalized[metric] = (df_sub[metric] - df_sub[metric].mean()) / df_sub[metric].std() * normative_std + normative_mean
+    
+    # Save the normalized subject data to a new csv file
+    df_sub_normalized.to_csv(path_out_csv, index=False)
+
+    return df_sub_normalized
+
+
+def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_path):
+    """
+    Detect atrophies by comparing the PAM50-normalized CSA with the PAM50 template.
+    Input:
+        pam50_norm_csa_file: Path to the PAM50-normalized CSA file
         sex: Sex of the subject (used for atrophy detection)
         age: Age of the subject (used for atrophy detection)
         hc_data: Path to the healthy control data folder
@@ -232,12 +318,13 @@ def plot_csa(norm_csa_file, sex, age, hc_data, lesion_statistics, output_path):
     """
     # Build output plot path
     path_csa_plot = os.path.join(output_path, "csa_plot.png")
+    path_csa_plot_normalized = os.path.join(output_path, "csa_plot_normalized.png")
 
     if os.path.exists(path_csa_plot):
         return path_csa_plot
 
     # Load the subject normalized CSA data
-    df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(norm_csa_file)   
+    df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(pam50_norm_csa_file)   
 
     # Load spine-generic normative data
     path_HC = hc_data
@@ -245,11 +332,20 @@ def plot_csa(norm_csa_file, sex, age, hc_data, lesion_statistics, output_path):
     df_normative_data = load_normative_data(path_HC, path_participants_tsv, min_slice=min_slice_idx, max_slice=max_slice_idx)
     # Get the subject ID and the nb of subjects
     subject_id = output_path.split("/")[-1]
-    number_of_subjects = len(df_normative_data[df_normative_data['sex'] == sex]['participant_id'].unique())
+    # Filter the normative data to keep only the subjects of the same sex and age group
+    df_normative_data_filtered, age_group = filter_normative_data(df_normative_data, sex, age)
+    number_of_subjects = len(df_normative_data_filtered['participant_id'].unique())
 
     # Create the plots
-    create_lineplot(df_normative_data, df_sub, subject_id, number_of_subjects, path_csa_plot, lesion_statistics, sex) 
-    
+    create_lineplot(df_normative_data_filtered, df_sub, subject_id, number_of_subjects, path_csa_plot, lesion_statistics, sex, age_group)
+
+    #### Normalization fo the metrics values with the healthy control group and plot the normalized values
+    path_csv_normalized = os.path.join(output_path, "csa_normalized.csv")
+    df_sub_normalized = normalize_outside_lesion(df_normative_data_filtered, df_sub, lesion_statistics, path_csv_normalized)
+
+    # Now we create another plot after the normalization
+    create_lineplot(df_normative_data_filtered, df_sub_normalized, subject_id, number_of_subjects, path_csa_plot_normalized, lesion_statistics, sex, age_group)
+
     return path_csa_plot
 
 
@@ -341,6 +437,7 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     """
     # Build output plot path
     path_asymmetry_plot_hc = os.path.join(output_path, "asymmetry_plot_hc.png")
+    path_asymmetry_plot_hc_normalized = os.path.join(output_path, "asymmetry_plot_hc_normalized.png")
 
     if os.path.exists(path_asymmetry_plot_hc):
         return path_asymmetry_plot_hc
@@ -371,8 +468,19 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     df_hc["NORM_DIFF(area_quadrant_posterior_left-right)"] = df_hc["DIFF(area_quadrant_posterior_left-right)"] / df_hc["MEAN(area_quadrant_posterior_left)"]
     df_hc["NORM_DIFF(area_left-right)"] = df_hc["DIFF(area_left-right)"] / (df_hc["MEAN(area_quadrant_anterior_left)"] + df_hc["MEAN(area_quadrant_posterior_left)"])
 
+    # Filter the healthy control data to keep only the subjects of the same sex and age group
+    df_hc_filtered, age_group = filter_normative_data(df_hc, sex, age)
+
     # Create the plot
-    create_lineplot_asymetry_with_hc(df_asymmetry, sex, age, df_hc, subject_id, path_asymmetry_plot_hc, lesion_statistics)
+    create_lineplot_asymetry_with_hc(df_asymmetry, sex, age, df_hc_filtered, subject_id, path_asymmetry_plot_hc, lesion_statistics, age_group)
+
+    #### Normalization fo the metrics values with the healthy control group and plot the normalized values
+    path_csv_normalized = os.path.join(output_path, "asymmetry_normalized.csv")
+    df_asymmetry_normalized = normalize_outside_lesion(df_hc_filtered, df_asymmetry, lesion_statistics, path_csv_normalized, asymmetry=True)
+
+    # Now we create another plot after the normalization
+    create_lineplot_asymetry_with_hc(df_asymmetry_normalized, sex, age, df_hc_filtered, subject_id, path_asymmetry_plot_hc_normalized, lesion_statistics, age_group)
+
 
     return path_asymmetry_plot_hc
 
@@ -517,10 +625,10 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
 
     # Now we investigate the detection of spinal cord atrophy
-    norm_csa_file = compute_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
+    pam50_normalized_csa_file = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
 
     # Now we plot the CSA compared to the PAM50
-    path_csa_plot = plot_csa(norm_csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
+    path_csa_plot = plot_csa(pam50_normalized_csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
 
     # # Now we perform asymetry computation
     # asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder)
