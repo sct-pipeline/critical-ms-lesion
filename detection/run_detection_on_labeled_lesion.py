@@ -43,12 +43,15 @@ def main():
     # Load the participants tsv file
     participants_tsv_path = os.path.join(dataset_path, "participants.tsv")
     participants_df = pd.read_csv(participants_tsv_path, sep="\t")
-    print(participants_df.head())
+
+    # Initialize a dataframe to store the reports for each lesion
+    df_reports = pd.DataFrame()
 
     # For each lesion mask, run the detection of critical lesions:
     for index, row in df.iterrows():
         lesion_mask_path = row["lesion_mask_file"]
         mri_scan_path = row["original_scan_file"]
+        label = row["critical_lesion"]
 
         # Subject id 
         subject_id = os.path.basename(mri_scan_path).split("_")[0]
@@ -62,7 +65,18 @@ def main():
         os.makedirs(subject_lesion_output_path, exist_ok=True)
 
         # Run the detection of critical lesions:
-        detect_critical_lesions(mri_scan_path, sex, date_birth, subject_lesion_output_path, path_hc_data, lesion_mask_input=lesion_mask_path)
+        sub_report_csv = detect_critical_lesions(mri_scan_path, sex, date_birth, subject_lesion_output_path, path_hc_data, lesion_mask_input=lesion_mask_path)
+
+        # Store the laterality report for this lesion in the dictionary
+        df_report_sub = pd.read_csv(sub_report_csv)
+        df_report_sub["scan_file"] = mri_scan_path
+        df_report_sub["lesion_mask_file"] = lesion_mask_path
+        df_report_sub["critical_lesion_label"] = label
+        df_reports = pd.concat([df_reports, df_report_sub], ignore_index=True)
+
+    # Save the final report for all lesions
+    final_report_csv_path = os.path.join(output_folder, "final_report.csv")
+    df_reports.to_csv(final_report_csv_path, index=False)
 
     return None
 

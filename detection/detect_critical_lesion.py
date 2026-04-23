@@ -181,7 +181,10 @@ def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output
         ## If we had previously dilated the lesion mask, we need to remove some slices from the lesion_slices_pam50
         if len(lesion_slices) == 1:
             # We have to remove the first 1/3 and last 1/3 of the lesion_slices_pam50 to be sure to keep only the slices corresponding to the original lesion mask
-            lesion_slices_pam50 = lesion_slices_pam50[len(lesion_slices_pam50)//3: -len(lesion_slices_pam50)//3]
+            lesion_slices_pam50_copy = lesion_slices_pam50[len(lesion_slices_pam50)//3: -len(lesion_slices_pam50)//3]
+            if lesion_slices_pam50_copy == []:
+                lesion_slices_pam50_copy = lesion_slices_pam50
+            lesion_slices_pam50 = lesion_slices_pam50_copy
         
         lesion_stats.append({"label": lesion_label, "size": lesion_size, "CoM": lesion_com, "slices": lesion_slices, "slices_pam50": lesion_slices_pam50})
 
@@ -745,7 +748,8 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     # Aggregate metrics per subject
     subject_wise_report_csv_path = aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, asymetry_csv_pam50, asymetry_csv_pam50_normalized, dict_laterality_reports, output_path)
 
+    return subject_wise_report_csv_path
 
 if __name__ == "__main__":
     args = parse_arguments()
-    detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)
+    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)
