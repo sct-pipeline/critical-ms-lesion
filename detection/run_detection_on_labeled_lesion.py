@@ -55,13 +55,14 @@ def main():
         sex = participants_df[participants_df["participant_id"] == subject_id]["sex"].values[0]
         date_birth = participants_df[participants_df["participant_id"] == subject_id]["date_of_birth"].values[0]
         date_birth = date_birth.replace("-", "")
+        lesion_id = lesion_mask_path.split("/")[-1].split("_")[-2]
 
         # Build output path for the subject:
-        subject_output_path = os.path.join(output_folder, subject_id)
-        os.makedirs(subject_output_path, exist_ok=True)
+        subject_lesion_output_path = os.path.join(output_folder, subject_id + "_" + lesion_id)
+        os.makedirs(subject_lesion_output_path, exist_ok=True)
 
         # Run the detection of critical lesions:
-        detect_critical_lesions(mri_scan_path, sex, date_birth, subject_output_path, path_hc_data, lesion_mask_input=lesion_mask_path)
+        detect_critical_lesions(mri_scan_path, sex, date_birth, subject_lesion_output_path, path_hc_data, lesion_mask_input=lesion_mask_path)
 
     return None
 
