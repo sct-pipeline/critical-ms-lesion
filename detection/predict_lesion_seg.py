@@ -74,10 +74,6 @@ def main(dataset_path, output_folder, include_yml, cervical=False):
     # Build a QC folder
     qc_folder = os.path.join(output_folder, "QC")
     os.makedirs(qc_folder, exist_ok=True)
-    
-    # Get all T2w axial scans in the dataset
-    t2w_axial_scans = get_t2w_ax_scans(dataset_path, cervical=cervical)
-    print(len(t2w_axial_scans), "T2w axial scans found in the dataset.")
 
     # Load the yml file
     if include_yml:
@@ -85,9 +81,16 @@ def main(dataset_path, output_folder, include_yml, cervical=False):
             include_dict = yaml.safe_load(f)
         # Get the list of scans to include
         include_scans = include_dict["FILES_SEG"]
+        scans = list(Path(dataset_path).rglob("*.nii.gz"))
+        scans = [str(scan) for scan in scans]
         # Keep only the scans that are in the include list
-        t2w_axial_scans = [scan for scan in t2w_axial_scans if any(included_scan in scan for included_scan in include_scans)]
+        t2w_axial_scans = [scan for scan in scans if any(included_scan in scan for included_scan in include_scans)]
         print(len(t2w_axial_scans), "T2w axial scans found in the dataset after applying the include filter.")
+
+    else:
+        # Get all T2w axial scans in the dataset
+        t2w_axial_scans = get_t2w_ax_scans(dataset_path, cervical=cervical)
+        print(len(t2w_axial_scans), "T2w axial scans found in the dataset.")
 
     # For each scan:
     for scan in tqdm(t2w_axial_scans):
