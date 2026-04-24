@@ -53,6 +53,14 @@ def main():
         mri_scan_path = row["original_scan_file"]
         label = row["critical_lesion"]
 
+        # We exclude the following lesion segs to avoid pipeline errors:
+        to_exclude = ["sub-015_ses-20061013_acq-axCerv_T2w_label-lesion_seg_lesion-3_mask.nii.gz",
+                      "sub-019_ses-19990611_acq-axCerv_T2w_label-lesion_seg_lesion-2_mask.nii.gz",
+                      "sub-032_ses-20000418_acq-axCerv_T2w_label-lesion_seg_lesion-2_mask.nii.gz",
+                      "sub-055_ses-20180820_acq-axCerv_T2w_label-lesion_seg_lesion-1_mask.nii.gz"]
+        if lesion_mask_path.split("/")[-1] in to_exclude:
+            continue
+
         # Subject id 
         subject_id = os.path.basename(mri_scan_path).split("_")[0]
         sex = participants_df[participants_df["participant_id"] == subject_id]["sex"].values[0]
