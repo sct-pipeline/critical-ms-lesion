@@ -27,6 +27,17 @@ import json
 from generate_csa_plot import load_normative_data, load_single_subject_data, create_lineplot, create_lineplot_asymetry, create_lineplot_asymetry_with_hc, load_normative_data_asymmetry, create_lineplot_laterality
 
 
+csa_metrics = ['MEAN(area)', 'MEAN(diameter_AP)', 'MEAN(diameter_RL)', 'MEAN(compression_ratio)', 'MEAN(eccentricity)', 'MEAN(solidity)']
+asymmetry_metrics = ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)','MEAN(symmetry_dice_AP)',
+                        'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)','NORM_DIFF(area_quadrant_anterior_left-right)',
+                        'NORM_DIFF(area_quadrant_posterior_left-right)', 'NORM_DIFF(area_left-right)']
+laterality_metrics = ['PAM50_00', 'PAM50_01', 'PAM50_02', 'PAM50_03', 'PAM50_04', 'PAM50_05', 'PAM50_06', 'PAM50_07', 'PAM50_08', 'PAM50_09',
+                        'PAM50_10', 'PAM50_11', 'PAM50_12', 'PAM50_13', 'PAM50_14', 'PAM50_15','PAM50_16', 'PAM50_17', 'PAM50_18', 'PAM50_19',
+                        'PAM50_20', 'PAM50_21', 'PAM50_22', 'PAM50_23', 'PAM50_24', 'PAM50_25', 'PAM50_26', 'PAM50_27', 'PAM50_28', 'PAM50_29',
+                        'PAM50_30', 'PAM50_31', 'PAM50_32', 'PAM50_33', 'PAM50_34', 'PAM50_35', 'total % (all tracts)', 'white matter', 
+                        'gray matter', 'dorsal columns', 'lateral funiculi', 'ventral funiculi']
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Detect critical lesions in MRI scans.")
     parser.add_argument("-i", "--input", required=True, help="Path to the MRI scan (NIfTI format)")
@@ -283,14 +294,10 @@ def normalize_outside_lesion(df_normative_data, df_sub, lesion_statistics, path_
     slices_for_normalization = [slice for slice in subject_slices_pam50 if slice not in lesion_slices_pam50]
     
     # We normlaize the following metrics:
-    METRICS = ['MEAN(area)', 'MEAN(diameter_AP)', 'MEAN(diameter_RL)', 'MEAN(compression_ratio)', 'MEAN(eccentricity)',
-           'MEAN(solidity)']
+    METRICS = csa_metrics
     
     if asymmetry:
-        METRICS = ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)',
-                    'MEAN(symmetry_dice_AP)', 'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)',
-                    'NORM_DIFF(area_quadrant_anterior_left-right)', 'NORM_DIFF(area_quadrant_posterior_left-right)',
-                    'NORM_DIFF(area_left-right)']
+        METRICS = asymmetry_metrics
     
     df_sub_normalized = df_sub.copy()
     # For each metric, we compute the mean and std of the normative data on the slices outside of the lesion but in subject
@@ -326,8 +333,8 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
     path_csa_plot_normalized = os.path.join(output_path, "csa_plot_normalized.png")
     path_csv_normalized = os.path.join(output_path, "csa_normalized.csv")
 
-    if os.path.exists(path_csa_plot):
-        return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
+    # if os.path.exists(path_csa_plot):
+    #     return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
 
     # Load the subject normalized CSA data
     df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(pam50_norm_csa_file)   
@@ -345,8 +352,24 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
     # Create the plots
     create_lineplot(df_normative_data_filtered, df_sub, subject_id, number_of_subjects, path_csa_plot, lesion_statistics, sex, age_group)
 
+    # For all CSA metrics, we want to create new columns, wich are the diff between the subject's metric at a slice and the normative mean at that slice
+    for metric in csa_metrics:
+        for slice in df_sub["Slice (I->S)"].unique():
+            normative_mean = df_normative_data_filtered[df_normative_data_filtered["Slice (I->S)"] == slice][metric].mean()
+            df_sub.loc[df_sub["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_sub[df_sub["Slice (I->S)"] == slice][metric] - normative_mean
+    # Overwrite the csv
+    df_sub.to_csv(pam50_norm_csa_file, index=False)
+    
     # Normalization fo the metrics values with the healthy control group and plot the normalized values
     df_sub_normalized = normalize_outside_lesion(df_normative_data_filtered, df_sub, lesion_statistics, path_csv_normalized)
+
+    # Same for the normalized data
+    for metric in csa_metrics:
+        for slice in df_sub_normalized["Slice (I->S)"].unique():
+            normative_mean = df_normative_data_filtered[df_normative_data_filtered["Slice (I->S)"] == slice][metric].mean()
+            df_sub_normalized.loc[df_sub_normalized["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_sub_normalized[df_sub_normalized["Slice (I->S)"] == slice][metric] - normative_mean
+    # Overwrite the csv
+    df_sub_normalized.to_csv(path_csv_normalized, index=False)
 
     # Now we create another plot after the normalization
     create_lineplot(df_normative_data_filtered, df_sub_normalized, subject_id, number_of_subjects, path_csa_plot_normalized, lesion_statistics, sex, age_group)
@@ -445,8 +468,8 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     path_asymmetry_plot_hc_normalized = os.path.join(output_path, "asymmetry_plot_hc_normalized.png")
     path_csv_normalized = os.path.join(output_path, "asymmetry_normalized.csv")
     
-    if os.path.exists(path_asymmetry_plot_hc):
-        return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
+    # if os.path.exists(path_asymmetry_plot_hc):
+    #     return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
     
     # Load the asymmetry results
     df_asymmetry = pd.read_csv(asymmetry_csv)
@@ -482,12 +505,27 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     # Create the plot
     create_lineplot_asymetry_with_hc(df_asymmetry, sex, age, df_hc_filtered, subject_id, path_asymmetry_plot_hc, lesion_statistics, age_group)
 
+    # For all asymmetry metrics, we want to create new columns, which are the diff between the subject's metric at a slice and the normative mean at that slice
+    for metric in asymmetry_metrics:
+        for slice in df_asymmetry["Slice (I->S)"].unique():
+            normative_mean = df_hc_filtered[df_hc_filtered["Slice (I->S)"] == slice][metric].mean()
+            df_asymmetry.loc[df_asymmetry["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_asymmetry[df_asymmetry["Slice (I->S)"] == slice][metric] - normative_mean
+    # Overwrite the csv
+    df_asymmetry.to_csv(asymmetry_csv, index=False)
+
     # Normalization fo the metrics values with the healthy control group and plot the normalized values
     df_asymmetry_normalized = normalize_outside_lesion(df_hc_filtered, df_asymmetry, lesion_statistics, path_csv_normalized, asymmetry=True)
 
     # Now we create another plot after the normalization
     create_lineplot_asymetry_with_hc(df_asymmetry_normalized, sex, age, df_hc_filtered, subject_id, path_asymmetry_plot_hc_normalized, lesion_statistics, age_group)
 
+    # Same for the normalized data
+    for metric in asymmetry_metrics:
+        for slice in df_asymmetry_normalized["Slice (I->S)"].unique():
+            normative_mean = df_hc_filtered[df_hc_filtered["Slice (I->S)"] == slice][metric].mean()
+            df_asymmetry_normalized.loc[df_asymmetry_normalized["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_asymmetry_normalized[df_asymmetry_normalized["Slice (I->S)"] == slice][metric] - normative_mean
+    # Overwrite the csv
+    df_asymmetry_normalized.to_csv(path_csv_normalized, index=False)
 
     return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
 
@@ -616,20 +654,9 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
     # Build output path
     subject_report_csv = os.path.join(output_path, "subject_report.csv")
 
-    if os.path.exists(subject_report_csv):
-        return subject_report_csv
+    # if os.path.exists(subject_report_csv):
+    #     return subject_report_csv
 
-    # Initialize the dataframe of the subject report
-    csa_metrics = ['MEAN(area)', 'MEAN(diameter_AP)', 'MEAN(diameter_RL)', 'MEAN(compression_ratio)', 'MEAN(eccentricity)', 'MEAN(solidity)']
-    asymmetry_metrics = ['MEAN(symmetry_dice_RL)', 'MEAN(symmetry_hausdorff_RL)', 'MEAN(symmetry_difference_RL)','MEAN(symmetry_dice_AP)',
-                         'MEAN(symmetry_hausdorff_AP)', 'MEAN(symmetry_difference_AP)','NORM_DIFF(area_quadrant_anterior_left-right)',
-                         'NORM_DIFF(area_quadrant_posterior_left-right)', 'NORM_DIFF(area_left-right)']
-    laterality_metrics = ['PAM50_00', 'PAM50_01', 'PAM50_02', 'PAM50_03', 'PAM50_04', 'PAM50_05', 'PAM50_06', 'PAM50_07', 'PAM50_08', 'PAM50_09',
-                            'PAM50_10', 'PAM50_11', 'PAM50_12', 'PAM50_13', 'PAM50_14', 'PAM50_15','PAM50_16', 'PAM50_17', 'PAM50_18', 'PAM50_19',
-                            'PAM50_20', 'PAM50_21', 'PAM50_22', 'PAM50_23', 'PAM50_24', 'PAM50_25', 'PAM50_26', 'PAM50_27', 'PAM50_28', 'PAM50_29',
-                            'PAM50_30', 'PAM50_31', 'PAM50_32', 'PAM50_33', 'PAM50_34', 'PAM50_35', 'total % (all tracts)', 'white matter', 
-                            'gray matter', 'dorsal columns', 'lateral funiculi', 'ventral funiculi']
-    
     # Initialize a sub df
     sub_df = pd.DataFrame()
 
@@ -644,7 +671,8 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
         # First we deal with the csa metrics:
         df_csa = pd.read_csv(csa_file)
         df_csa_normalized = pd.read_csv(csa_file_normalized)
-        for csa_metric in csa_metrics:
+        all_csa_metrics = csa_metrics + [metric+"_(diff_with_hc)" for metric in csa_metrics]
+        for csa_metric in all_csa_metrics:
             # We compute the mean of the metric on the lesion slices in the PAM50 space
             lesion_report[csa_metric+"_mean"] = df_csa[df_csa["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].mean()
             lesion_report[csa_metric+"_max"] = df_csa[df_csa["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].max()
@@ -659,7 +687,8 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
         # Now same with the asymmetry measures
         df_asymmetry = pd.read_csv(asymetry_csv_pam50)
         df_asymmetry_normalized = pd.read_csv(asymetry_csv_pam50_normalized)
-        for asymmetry_metric in asymmetry_metrics:
+        all_asymmetry_metrics = asymmetry_metrics + [metric+"_(diff_with_hc)" for metric in asymmetry_metrics]
+        for asymmetry_metric in all_asymmetry_metrics:
             # We compute the mean of the metric on the lesion slices in the PAM50 space
             lesion_report[asymmetry_metric+"_mean"] = df_asymmetry[df_asymmetry["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].mean()
             lesion_report[asymmetry_metric+"_max"] = df_asymmetry[df_asymmetry["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].max()
