@@ -57,7 +57,10 @@ def main():
         to_exclude = ["sub-015_ses-20061013_acq-axCerv_T2w_label-lesion_seg_lesion-3_mask.nii.gz",
                       "sub-019_ses-19990611_acq-axCerv_T2w_label-lesion_seg_lesion-2_mask.nii.gz",
                       "sub-032_ses-20000418_acq-axCerv_T2w_label-lesion_seg_lesion-2_mask.nii.gz",
-                      "sub-055_ses-20180820_acq-axCerv_T2w_label-lesion_seg_lesion-1_mask.nii.gz"]
+                      "sub-055_ses-20180820_acq-axCerv_T2w_label-lesion_seg_lesion-1_mask.nii.gz",
+                      "sub-071_ses-20160114_acq-axCerv_T2w_label-lesion_seg_lesion-1_mask.nii.gz",
+                      "sub-080_ses-20150604_acq-axCerv_T2w_label-lesion_seg_lesion-1_mask.nii.gz",
+                      "sub-084_ses-20090310_acq-axCervMyelo_T2w_label-lesion_seg_lesion-2_mask.nii.gz"]
         if lesion_mask_path.split("/")[-1] in to_exclude:
             continue
 
