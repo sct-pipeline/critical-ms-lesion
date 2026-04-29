@@ -36,6 +36,8 @@ def main():
     os.makedirs(output_folder, exist_ok=True)
 
     # Initialize a logger in the output folder
+    if os.path.exists(os.path.join(output_folder, "analyze_dataset.log")):
+        os.remove(os.path.join(output_folder, "analyze_dataset.log"))
     logger.add(os.path.join(output_folder, "analyze_dataset.log"),level="INFO")
 
     # Load the include.yml file
@@ -48,6 +50,17 @@ def main():
     list_images = list(Path(dataset_path).rglob("*.nii.gz"))
     list_images = [str(image) for image in list_images]
 
+    # Count the number of each contrasts in the dataset
+    contrasts = {}
+    for image in include_scans:
+        contrast = image.split("/")[-1].split("_")[-1].split(".nii.gz")[0]
+        if contrast not in contrasts:
+            contrasts[contrast] = 0
+        contrasts[contrast] += 1
+    logger.info("Contrasts in the dataset:")
+    for contrast, count in contrasts.items():
+        logger.info(f"{contrast}: {count}")
+
     # Analyze the resolution of the images in the dataset:
     resolutions = []
     for scan in include_scans:
@@ -56,19 +69,15 @@ def main():
         matching_file = matching_files[0] if len(matching_files) == 1 else None
         # Load the image and get its resolution
         img = nib.load(matching_file)
-        # Set orientation to LAS
+        # Set orientation to RAS
         img = nib.as_closest_canonical(img)
         # Print the orientation
         orientation = nib.aff2axcodes(img.affine)
-        logger.info(f"File: {matching_file.split('/')[-1]}, Orientation: {orientation}")
+        # logger.info(f"File: {matching_file.split('/')[-1]}, Orientation: {orientation}")
         # Get the resolution
         resolution = img.header.get_zooms()
         resolutions.append((matching_file, resolution))
-        logger.info(f"Resolution: {resolution}")
-    
-    # Log the results
-    for file, resolution in resolutions:
-        logger.info(f"File: {file}, Resolution: {resolution}")
+        # logger.info(f"Resolution: {resolution}")
 
     # Log the mean +- std resolution for each dimension
     resolutions_array = pd.DataFrame(resolutions, columns=["file", "resolution"])
@@ -76,6 +85,7 @@ def main():
     mean_resolution = resolutions_array[["x", "y", "z"]].mean()
     std_resolution = resolutions_array[["x", "y", "z"]].std()
     # Log the mean +- std resolution for each dimension
+    logger.info("Mean +- std resolution for each dimension in RAS orientation:")
     for dim in ["x", "y", "z"]:
         logger.info(f"Mean resolution for {dim}: {mean_resolution[dim]:.2f} +- {std_resolution[dim]:.2f}")
 
