@@ -354,9 +354,12 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
 
     # For all CSA metrics, we want to create new columns, wich are the diff between the subject's metric at a slice and the normative mean at that slice
     for metric in csa_metrics:
+        full_mean = df_normative_data_filtered[metric].mean()
         for slice in df_sub["Slice (I->S)"].unique():
             normative_mean = df_normative_data_filtered[df_normative_data_filtered["Slice (I->S)"] == slice][metric].mean()
             df_sub.loc[df_sub["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_sub[df_sub["Slice (I->S)"] == slice][metric] - normative_mean
+            df_sub.loc[df_sub["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc_norm)"] = (df_sub[df_sub["Slice (I->S)"] == slice][metric] - normative_mean) / full_mean if full_mean != 0 else 0
+
     # Overwrite the csv
     df_sub.to_csv(pam50_norm_csa_file, index=False)
     
@@ -365,9 +368,11 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
 
     # Same for the normalized data
     for metric in csa_metrics:
+        full_mean = df_normative_data_filtered[metric].mean()
         for slice in df_sub_normalized["Slice (I->S)"].unique():
             normative_mean = df_normative_data_filtered[df_normative_data_filtered["Slice (I->S)"] == slice][metric].mean()
             df_sub_normalized.loc[df_sub_normalized["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_sub_normalized[df_sub_normalized["Slice (I->S)"] == slice][metric] - normative_mean
+            df_sub_normalized.loc[df_sub_normalized["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc_norm)"] = (df_sub_normalized[df_sub_normalized["Slice (I->S)"] == slice][metric] - normative_mean) / full_mean if full_mean != 0 else 0
     # Overwrite the csv
     df_sub_normalized.to_csv(path_csv_normalized, index=False)
 
@@ -507,9 +512,11 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
 
     # For all asymmetry metrics, we want to create new columns, which are the diff between the subject's metric at a slice and the normative mean at that slice
     for metric in asymmetry_metrics:
+        full_mean = df_hc_filtered[metric].mean()
         for slice in df_asymmetry["Slice (I->S)"].unique():
             normative_mean = df_hc_filtered[df_hc_filtered["Slice (I->S)"] == slice][metric].mean()
             df_asymmetry.loc[df_asymmetry["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_asymmetry[df_asymmetry["Slice (I->S)"] == slice][metric] - normative_mean
+            df_asymmetry.loc[df_asymmetry["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc_norm)"] = (df_asymmetry[df_asymmetry["Slice (I->S)"] == slice][metric] - normative_mean) / full_mean if full_mean != 0 else 0
     # Overwrite the csv
     df_asymmetry.to_csv(asymmetry_csv, index=False)
 
@@ -521,9 +528,11 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
 
     # Same for the normalized data
     for metric in asymmetry_metrics:
+        full_mean = df_hc_filtered[metric].mean()
         for slice in df_asymmetry_normalized["Slice (I->S)"].unique():
             normative_mean = df_hc_filtered[df_hc_filtered["Slice (I->S)"] == slice][metric].mean()
             df_asymmetry_normalized.loc[df_asymmetry_normalized["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc)"] = df_asymmetry_normalized[df_asymmetry_normalized["Slice (I->S)"] == slice][metric] - normative_mean
+            df_asymmetry_normalized.loc[df_asymmetry_normalized["Slice (I->S)"] == slice, f"{metric}_(diff_with_hc_norm)"] = (df_asymmetry_normalized[df_asymmetry_normalized["Slice (I->S)"] == slice][metric] - normative_mean) / full_mean if full_mean != 0 else 0
     # Overwrite the csv
     df_asymmetry_normalized.to_csv(path_csv_normalized, index=False)
 
@@ -671,7 +680,7 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
         # First we deal with the csa metrics:
         df_csa = pd.read_csv(csa_file)
         df_csa_normalized = pd.read_csv(csa_file_normalized)
-        all_csa_metrics = csa_metrics + [metric+"_(diff_with_hc)" for metric in csa_metrics]
+        all_csa_metrics = csa_metrics + [metric+"_(diff_with_hc)" for metric in csa_metrics] + [metric+"_(diff_with_hc_norm)" for metric in csa_metrics]
         for csa_metric in all_csa_metrics:
             # We compute the mean of the metric on the lesion slices in the PAM50 space
             lesion_report[csa_metric+"_mean"] = df_csa[df_csa["Slice (I->S)"].isin(lesion_slices_pam50)][csa_metric].mean()
@@ -687,7 +696,7 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
         # Now same with the asymmetry measures
         df_asymmetry = pd.read_csv(asymetry_csv_pam50)
         df_asymmetry_normalized = pd.read_csv(asymetry_csv_pam50_normalized)
-        all_asymmetry_metrics = asymmetry_metrics + [metric+"_(diff_with_hc)" for metric in asymmetry_metrics]
+        all_asymmetry_metrics = asymmetry_metrics + [metric+"_(diff_with_hc)" for metric in asymmetry_metrics] + [metric+"_(diff_with_hc_norm)" for metric in asymmetry_metrics]
         for asymmetry_metric in all_asymmetry_metrics:
             # We compute the mean of the metric on the lesion slices in the PAM50 space
             lesion_report[asymmetry_metric+"_mean"] = df_asymmetry[df_asymmetry["Slice (I->S)"].isin(lesion_slices_pam50)][asymmetry_metric].mean()
