@@ -260,7 +260,7 @@ def main():
         # },
         {
             "name": "Gradient Boosting",
-            "pipeline": Pipeline([('clf', XGBClassifier(random_state=42))]),
+            "pipeline": Pipeline([('clf', GradientBoostingClassifier(random_state=42))]),
             "search_space": {
                 'clf__learning_rate': Real(0.01, 0.3, prior='log-uniform'),
                 'clf__max_depth': Integer(3, 10),
@@ -334,7 +334,7 @@ def main():
         logger.info(f"Best parameters for {config['name']}: {best_params}")
         # best_params = {'clf__learning_rate': 0.040343472274915984, 'clf__max_depth': 8, 'clf__subsample': 0.966433999423917}
 
-        model = XGBClassifier(**{k.replace('clf__', ''): v for k, v in best_params.items()}, random_state=42)
+        model = GradientBoostingClassifier(**{k.replace('clf__', ''): v for k, v in best_params.items()}, random_state=42)
         model.fit(X, y)
         # Get shap values and plot them
         explainer = shap.Explainer(model, seed=42)
