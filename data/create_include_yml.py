@@ -1,7 +1,15 @@
 """
-This script scans a BIDS dataset and creates an include.yml file listing all
-axial scans of the spinal cord (cervical, thoracic, lumbar), excluding axial
-brain scans.
+This script scans a BIDS dataset and creates a JSON file listing all axial
+scans of the spinal cord (cervical, thoracic, lumbar), excluding axial brain
+scans. The output is structured as:
+
+{
+    "sub-XXX": {
+        "ses-YYY": ["<scan_1>.nii.gz", "<scan_2>.nii.gz", ...],
+        ...
+    },
+    ...
+}
 
 An image is considered "axial spinal cord" if its filename contains an
 `acq-ax*` entity that is not `acq-axBrain` (e.g. axCerv, axThor, axThorUpper,
@@ -9,21 +17,20 @@ axThorLower, axLumb, ...).
 
 Input:
     -d: path to the dataset (BIDS format)
-    -o: path to the output include.yml file
+    -o: path to the output json file
 
 Author: Pierre-Louis Benveniste
 """
 import re
+import json
 import argparse
 from pathlib import Path
 
-import yaml
-
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Create an include.yml file listing all axial spinal cord scans in a BIDS dataset.")
+    parser = argparse.ArgumentParser(description="Create a json file listing all axial spinal cord scans in a BIDS dataset, grouped by subject and session.")
     parser.add_argument("-d", "--dataset", type=str, required=True, help="Path to the dataset (BIDS format).")
-    parser.add_argument("-o", "--output", type=str, required=True, help="Path to the output include.yml file.")
+    parser.add_argument("-o", "--output", type=str, required=True, help="Path to the output json file.")
     return parser.parse_args()
 
 
@@ -47,13 +54,20 @@ def main():
     all_scans = [f for f in all_scans if "derivatives" not in f.parts and "sourcedata" not in f.parts]
 
     # Keep only axial spinal cord scans (exclude axial brain scans)
-    included_scans = [f.name for f in all_scans if is_axial_spinal_cord_scan(f.name)]
+    included_scans = [f for f in all_scans if is_axial_spinal_cord_scan(f.name)]
 
-    # Write the include.yml file
+    # Group the included scans by subject and session
+    scans_by_subject = {}
+    for f in included_scans:
+        subject = next(part for part in f.parts if part.startswith("sub-"))
+        session = next(part for part in f.parts if part.startswith("ses-"))
+        scans_by_subject.setdefault(subject, {}).setdefault(session, []).append(f.name)
+
+    # Write the output json file
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        yaml.dump({"FILES_SEG": included_scans}, f, default_flow_style=False, sort_keys=False)
+        json.dump(scans_by_subject, f, indent=4, sort_keys=True)
 
     print(f"Found {len(included_scans)} axial spinal cord scans out of {len(all_scans)} anat scans.")
     print(f"Include file written to: {output_path}")
