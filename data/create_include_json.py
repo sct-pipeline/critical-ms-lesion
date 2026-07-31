@@ -5,7 +5,11 @@ scans. The output is structured as:
 
 {
     "sub-XXX": {
-        "ses-YYY": ["<scan_1>.nii.gz", "<scan_2>.nii.gz", ...],
+        "ses-YYY": {
+            "<scan_1>.nii.gz": "<path/to/scan_1.nii.gz>",
+            "<scan_2>.nii.gz": "<path/to/scan_2.nii.gz>",
+            ...
+        },
         ...
     },
     ...
@@ -56,12 +60,12 @@ def main():
     # Keep only axial spinal cord scans (exclude axial brain scans)
     included_scans = [f for f in all_scans if is_axial_spinal_cord_scan(f.name)]
 
-    # Group the included scans by subject and session
+    # Group the included scans by subject and session, mapping each filename to its path
     scans_by_subject = {}
     for f in included_scans:
         subject = next(part for part in f.parts if part.startswith("sub-"))
         session = next(part for part in f.parts if part.startswith("ses-"))
-        scans_by_subject.setdefault(subject, {}).setdefault(session, []).append(f.name)
+        scans_by_subject.setdefault(subject, {}).setdefault(session, {})[f.name] = str(f)
 
     # Write the output json file
     output_path = Path(args.output)
