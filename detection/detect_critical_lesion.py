@@ -41,10 +41,9 @@ laterality_metrics = ['PAM50_00', 'PAM50_01', 'PAM50_02', 'PAM50_03', 'PAM50_04'
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Detect critical lesions in MRI scans.")
     parser.add_argument("-i", "--input", required=True, help="Path to the MRI scan (NIfTI format)")
-    parser.add_argument("--lesion-seg", help="Path to the lesion segmentation mask (NIfTI format)")
+    parser.add_argument("--lesion-seg", help="Path to the lesion segmentation mask (NIfTI format) if it exists. If not, it will be segmented using SCT.")
     parser.add_argument("--date-birth", required=True, type=str, help="Date of birth of the subject YYYYMMDD")
     parser.add_argument("--sex", required=True, choices=["M", "F"], help="Sex of the subject (used for atrophy detection)")
-    parser.add_argument("--pam50", help="Path to the PAM50 template folder containing all the csv files")
     parser.add_argument("--hc-data", required=True, help="Path to the healthy control data folder for asymmetry comparison")
     parser.add_argument("-o", "--output_folder", required=True, help="Path to the output folder")
     return parser.parse_args()
