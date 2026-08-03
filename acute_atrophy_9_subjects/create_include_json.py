@@ -57,6 +57,9 @@ def main():
     all_scans = sorted(dataset_path.rglob("anat/*.nii.gz"))
     all_scans = [f for f in all_scans if "derivatives" not in f.parts and "sourcedata" not in f.parts]
 
+    # Remove all scans where Gad was used
+    all_scans = [f for f in all_scans if "ce-Gad" not in f.name]
+
     # Keep only axial spinal cord scans (exclude axial brain scans)
     included_scans = [f for f in all_scans if is_axial_spinal_cord_scan(f.name)]
 
