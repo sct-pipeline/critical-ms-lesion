@@ -750,10 +750,18 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     assert os.system(f"cp {input_scan} {output_path}") == 0, "Error copying the input scan to the output folder"
     # SC segmentation
     sc_mask = run_sc_segmentation(input_scan, output_path, qc_folder)
-    # Vert labeling
-    vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
+
     # Lesion segmentation
     lesion_mask = run_lesion_segmentation(input_scan, sc_mask, lesion_mask_input, output_path, qc_folder)
+
+    # If the lesion mask is empty, we return a report with no lesions
+    lesion_mask_data = nib.load(lesion_mask).get_fdata()
+    if np.sum(lesion_mask_data) <= 15: # 15mm3 is the boundary fixed in this paper 10.1016/j.nicl.2018.01.011
+        print("No lesions detected in the scan.")
+        return None
+
+    # Vert labeling
+    vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
     
     # For each lesion, we compute its CoM and size
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
