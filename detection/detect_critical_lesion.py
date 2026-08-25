@@ -332,8 +332,8 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
     path_csa_plot_normalized = os.path.join(output_path, "csa_plot_normalized.png")
     path_csv_normalized = os.path.join(output_path, "csa_normalized.csv")
 
-    # if os.path.exists(path_csa_plot):
-    #     return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
+    if os.path.exists(path_csa_plot):
+        return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
 
     # Load the subject normalized CSA data
     df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(pam50_norm_csa_file)   
@@ -472,8 +472,8 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     path_asymmetry_plot_hc_normalized = os.path.join(output_path, "asymmetry_plot_hc_normalized.png")
     path_csv_normalized = os.path.join(output_path, "asymmetry_normalized.csv")
     
-    # if os.path.exists(path_asymmetry_plot_hc):
-    #     return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
+    if os.path.exists(path_asymmetry_plot_hc):
+        return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
     
     # Load the asymmetry results
     df_asymmetry = pd.read_csv(asymmetry_csv)
@@ -642,9 +642,8 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
         # Create a Slice (I->S)	column in df_laterality equal to the index
         df_lesion["Slice (I->S)"] = df_lesion.index
         ## Add this df to the df_laterality dataframe with the lesion label as index
-        df_lesion["lesion_label"] = lesion_label
+        df_lesion["lesion_label"] = lesion["label"]
         df_laterality = pd.concat([df_laterality, df_lesion[["Slice (I->S)", "vert_level", "lesion_label", "white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)"]]], ignore_index=True)
-        
     # Rename the vert_level column to VertLevel
     df_laterality = df_laterality.rename(columns={"vert_level": "VertLevel"})
 
@@ -662,8 +661,8 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
     # Build output path
     subject_report_csv = os.path.join(output_path, "subject_report.csv")
 
-    # if os.path.exists(subject_report_csv):
-    #     return subject_report_csv
+    if os.path.exists(subject_report_csv):
+        return subject_report_csv
 
     # Initialize a sub df
     sub_df = pd.DataFrame()
@@ -797,4 +796,4 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
 
 if __name__ == "__main__":
     args = parse_arguments()
-    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)
+    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)    

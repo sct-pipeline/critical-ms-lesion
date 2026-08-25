@@ -607,9 +607,7 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
             end = df_sub_lesion[df_sub_lesion["total % (all tracts)"] > 0]["Slice (I->S)"].max() 
             # Create the x-range for this specific lesion
             x_range = np.arange(start, end + 1) # +1 to include the last slice
-            # Fill the background from y=0 to y=1
-            axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-        
+            
         ymin, ymax = axs[index].get_ylim()
 
         # Add legend
