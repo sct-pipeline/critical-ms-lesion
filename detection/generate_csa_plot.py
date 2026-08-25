@@ -634,8 +634,9 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
         axs[index].spines['bottom'].set_visible(True)
 
         # Get indices of slices corresponding vertebral levels
-        vert, ind_vert, ind_vert_mid = get_vert_indices(df_sub, single_subject=True)
-        vert = [int(v) for v in vert]  # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
+        df_vert = df_sub.drop_duplicates(subset="Slice (I->S)").sort_values("Slice (I->S)").reset_index(drop=True)
+        vert, ind_vert, ind_vert_mid = get_vert_indices(df_vert, single_subject=True)
+        vert = [int(v) for v in vert] # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
         # Insert a vertical line for each intervertebral disc
         for idx, x in enumerate(ind_vert[1:-1]):
             axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
