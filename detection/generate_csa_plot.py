@@ -588,7 +588,6 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
     METRICS_LATERALITY = ["white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)"]
 
     # Remove rows with NaN values
-    df_sub = df_sub.dropna(subset=METRICS_LATERALITY).reset_index(drop=True)
     df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
 
     # Loop across metrics
@@ -598,7 +597,7 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion_label in enumerate(df_sub['lesion_label'].unique()):
             # Paint areas where column total % (all tracts) is above 0 (i.e., lesioned) with a color corresponding to the lesion label
-            df_sub_lesion = df_sub[df_sub['lesion_label'] == lesion_label]
+            df_sub_lesion = df_sub[(df_sub['lesion_label'] == lesion_label) & (df_sub[metric].notna())]
             sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_lesion, linewidth=2, color=colors[lesion_idx % len(colors)], 
                         label=f'Lesion {lesion_label}')
             # We also want to point the background for each lesion
@@ -639,22 +638,22 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
         vert = [int(v) for v in vert] # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
         # Insert a vertical line for each intervertebral disc
         for idx, x in enumerate(ind_vert[1:-1]):
-            axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
+            axs[index].axvline(df_vert.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
 
         # Insert a text label for each vertebral level
         for idx, x in enumerate(ind_vert_mid, 0):
             # Deal with labels
             if vert[x] > 19:
                 level = 'L' + str(vert[x] - 19)
-                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                axs[index].text(df_vert.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
                                 verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
-            if vert[x] > 7:
+            elif vert[x] > 7:
                 level = 'T' + str(vert[x] - 7)
-                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                axs[index].text(df_vert.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
                                 verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
             else:
                 level = 'C' + str(vert[x])
-                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                axs[index].text(df_vert.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
                                 verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
 
         # Invert x-axis
