@@ -49,6 +49,12 @@ def is_axial_spinal_cord_scan(filename):
     return "brain" not in acq_value.lower()
 
 
+scans_to_remove = [
+    "sub-007_ses-20250318_acq-axLumb_run-02_T1w.nii.gz",
+    "sub-007_ses-20250318_acq-axLumb_run-02_T2w.nii.gz"
+]
+
+
 def main():
     args = parse_args()
     dataset_path = Path(args.dataset)
@@ -62,6 +68,8 @@ def main():
 
     # Keep only axial spinal cord scans (exclude axial brain scans)
     included_scans = [f for f in all_scans if is_axial_spinal_cord_scan(f.name)]
+    # Remove scans that are in the scans_to_remove list
+    included_scans = [f for f in included_scans if f.name not in scans_to_remove]
 
     # Group the included scans by subject and session, mapping each filename to its path
     scans_by_subject = {}
