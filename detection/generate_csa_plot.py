@@ -482,7 +482,6 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
     }
 
     # Remove rows with NaN values
-    df_sub = df_sub.dropna(subset=METRICS_ASYMMETRY).reset_index(drop=True)
     df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
 
     # Number of subejct is the number of unique participant IDs in df_hc wiht the same sex
@@ -494,6 +493,7 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
         # We color the brackground colons where the lesions are
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion in enumerate(lesion_statistics):
+            df_sub_metric = df_sub.dropna(subset=[metric]).reset_index(drop=True)
             lesion_slices = sorted(list(lesion['slices_pam50']))
             start, end = lesion_slices[0], lesion_slices[-1]
             # Create the x-range for this specific lesion
@@ -506,7 +506,7 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
                         linewidth=2, color=COLORS_SEX[sex],
                         label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects}) for age group {age_group}')
         # Plot the first metric in purple (corresponding to the right-left symmetry)
-        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
+        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_metric, linewidth=2, color='green',
                         label=f'{subID}')
         
         ymin, ymax = axs[index].get_ylim()

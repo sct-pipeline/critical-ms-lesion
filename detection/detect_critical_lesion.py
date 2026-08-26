@@ -796,4 +796,4 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
 
 if __name__ == "__main__":
     args = parse_arguments()
-    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)    
+    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)
