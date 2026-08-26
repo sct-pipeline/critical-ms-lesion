@@ -45,6 +45,7 @@ def parse_arguments():
     parser.add_argument("--date-birth", required=True, type=str, help="Date of birth of the subject YYYYMMDD")
     parser.add_argument("--sex", required=True, choices=["M", "F"], help="Sex of the subject (used for atrophy detection)")
     parser.add_argument("--hc-data", required=True, help="Path to the healthy control data folder for asymmetry comparison")
+    parser.add_argument("--min-lesion-size", type=float, default=15.0, help="Minimum lesion size (in mm3) to keep a lesion; smaller lesions are treated as spurious detections and discarded (default: 15.0)")
     parser.add_argument("-o", "--output_folder", required=True, help="Path to the output folder")
     return parser.parse_args()
 
@@ -105,11 +106,14 @@ def run_vert_labeling(input_scan, output_path, qc_folder):
     return vert_levels
 
 
-def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output_path, qc_folder):
+def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output_path, qc_folder, min_lesion_size_mm3=15.0):
     """
     This function loads the lesion mask and computes the statistics of each lesion (CoM and size).
+    Lesions smaller than min_lesion_size_mm3 are treated as spurious detections and discarded (they are
+    excluded from lesion_stats, so downstream steps such as detect_laterality never analyze them).
     Input:
         lesion_mask: Path to the lesion mask (NIfTI format)
+        min_lesion_size_mm3: Minimum lesion size (in mm3) to keep a lesion
     Output:
         A list of dictionaries containing the statistics of each lesion (CoM and size)
     """
@@ -153,6 +157,11 @@ def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output
         lesion_mask = labeled_lesions == lesion_label
         # Lesion size
         lesion_size = float(np.sum(lesion_mask)*voxel_volume)
+        # Skip spurious lesions that are too small to be reliably analyzed downstream (e.g. sct_analyze_lesion
+        # can crash on lesions spanning a single voxel/slice near the edge of the volume)
+        if lesion_size < min_lesion_size_mm3:
+            print(f"Skipping lesion {lesion_label} (size={lesion_size:.2f} mm3 < {min_lesion_size_mm3} mm3 threshold)")
+            continue
         # Lesion CoM in voxel coordinates
         lesion_com = ndimage.center_of_mass(lesion_mask)
         lesion_com = (float(lesion_com[0]), float(lesion_com[1]), float(lesion_com[2]))
@@ -730,7 +739,7 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
     return subject_report_csv
 
 
-def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None):
+def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None, min_lesion_size_mm3=15.0):
 
     # Build the output folder
     image_name = input_scan.split("/")[-1].replace(".nii.gz", "")
@@ -753,17 +762,23 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     # Lesion segmentation
     lesion_mask = run_lesion_segmentation(input_scan, sc_mask, lesion_mask_input, output_path, qc_folder)
 
-    # If the lesion mask is empty, we return a report with no lesions
+    # If the lesion mask is empty (below min_lesion_size_mm3 in total), we return a report with no lesions
     lesion_mask_data = nib.load(lesion_mask).get_fdata()
-    if np.sum(lesion_mask_data) <= 15: # 15mm3 is the boundary fixed in this paper 10.1016/j.nicl.2018.01.011
+    lesion_mask_voxel_volume = np.prod(nib.load(lesion_mask).header.get_zooms())
+    if np.sum(lesion_mask_data) * lesion_mask_voxel_volume < min_lesion_size_mm3: # 15mm3 default boundary fixed in this paper 10.1016/j.nicl.2018.01.011
         print("No lesions detected in the scan.")
         return None
 
     # Vert labeling
     vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
-    
+
     # For each lesion, we compute its CoM and size
-    lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
+    lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels, output_path, qc_folder, min_lesion_size_mm3=min_lesion_size_mm3)
+
+    # If every lesion was filtered out as spurious/too small, we return a report with no lesions
+    if len(lesion_statistics) == 0:
+        print("No lesions above the minimum size threshold were detected in the scan.")
+        return None
 
     # Now we investigate the detection of spinal cord atrophy
     csa_file = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
@@ -796,4 +811,4 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
 
 if __name__ == "__main__":
     args = parse_arguments()
-    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)
+    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg, min_lesion_size_mm3=args.min_lesion_size)

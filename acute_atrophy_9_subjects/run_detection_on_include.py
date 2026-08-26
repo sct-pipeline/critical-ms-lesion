@@ -31,6 +31,7 @@ def parse_args():
     parser.add_argument("-i", "--include_json", type=str, required=True, help="Path to the include json file (output of create_include_json.py).")
     parser.add_argument("-d", "--dataset_path", type=str, required=True, help="Path to the dataset (BIDS format), used to locate participants.tsv.")
     parser.add_argument("--hc-data", type=str, required=True, help="Path to the folder containing the healthy control data (used for atrophy detection).")
+    parser.add_argument("--min-lesion-size", type=float, default=15.0, help="Minimum lesion size (in mm3) to keep a lesion; smaller lesions are treated as spurious detections and discarded (default: 15.0)")
     parser.add_argument("-o", "--output_folder", type=str, required=True, help="Path to the output folder where the detection results will be saved.")
     return parser.parse_args()
 
@@ -63,7 +64,7 @@ def main():
             for scan_name, scan_path in scans.items():
                 print(f"Running detection for {scan_name} ({subject_id}/{session_id})")
                 try:
-                    sub_report_csv = detect_critical_lesions(scan_path, sex, date_of_birth, output_folder, path_hc_data)
+                    sub_report_csv = detect_critical_lesions(scan_path, sex, date_of_birth, output_folder, path_hc_data, min_lesion_size_mm3=args.min_lesion_size)
                     if sub_report_csv is None:
                         print(f"No lesions detected for {scan_name} ({subject_id}/{session_id}). Skipping report aggregation.")
                         continue
