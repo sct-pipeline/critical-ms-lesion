@@ -209,12 +209,15 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, lesion
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion in enumerate(lesion_statistics):
             lesion_slices = sorted(list(lesion['slices_pam50']))
+            # Skip lesions with no PAM50-mapped slices (nothing to shade for them)
+            if not lesion_slices:
+                continue
             start, end = lesion_slices[0], lesion_slices[-1]
             # Create the x-range for this specific lesion
             x_range = np.arange(start, end + 1) # +1 to include the last slice
             # Fill the background from y=0 to y=1
             axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-        
+
         # Note: we are plotting slices not levels to avoid averaging across levels
         # Plot spine-generic multi-subject data for a given sex
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df[df['sex'] == sex], errorbar='sd',
@@ -323,12 +326,15 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion in enumerate(lesion_statistics):
             lesion_slices = sorted(list(lesion['slices']))
+            # Skip lesions with no mapped slices (nothing to shade for them)
+            if not lesion_slices:
+                continue
             start, end = lesion_slices[0], lesion_slices[-1]
             # Create the x-range for this specific lesion
             x_range = np.arange(start, end + 1) # +1 to include the last slice
             # Fill the background from y=0 to y=1
             axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-            
+
         if metric in ["MEAN(area_quadrant_anterior_left)", "MEAN(area_quadrant_posterior_left)"]:
             # Plot the first metric in blue (corresponding to the left side)
             sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='blue',
@@ -495,12 +501,15 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
         for lesion_idx, lesion in enumerate(lesion_statistics):
             df_sub_metric = df_sub.dropna(subset=[metric]).reset_index(drop=True)
             lesion_slices = sorted(list(lesion['slices_pam50']))
+            # Skip lesions with no PAM50-mapped slices (nothing to shade for them)
+            if not lesion_slices:
+                continue
             start, end = lesion_slices[0], lesion_slices[-1]
             # Create the x-range for this specific lesion
             x_range = np.arange(start, end + 1) # +1 to include the last slice
             # Fill the background from y=0 to y=1
             axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-        
+
         # Plot spine-generic multi-subject data for a given sex
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_hc[df_hc['sex'] == sex], errorbar='sd',
                         linewidth=2, color=COLORS_SEX[sex],
@@ -598,15 +607,9 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
         for lesion_idx, lesion_label in enumerate(df_sub['lesion_label'].unique()):
             # Paint areas where column total % (all tracts) is above 0 (i.e., lesioned) with a color corresponding to the lesion label
             df_sub_lesion = df_sub[(df_sub['lesion_label'] == lesion_label) & (df_sub[metric].notna())]
-            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_lesion, linewidth=2, color=colors[lesion_idx % len(colors)], 
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_lesion, linewidth=2, color=colors[lesion_idx % len(colors)],
                         label=f'Lesion {lesion_label}')
-            # We also want to point the background for each lesion
-            ## start is min slice where total % (all tracts) is above 0 for this lesion, end is max slice where total % (all tracts) is above 0 for this lesion
-            start = df_sub_lesion[df_sub_lesion["total % (all tracts)"] > 0]["Slice (I->S)"].min()
-            end = df_sub_lesion[df_sub_lesion["total % (all tracts)"] > 0]["Slice (I->S)"].max() 
-            # Create the x-range for this specific lesion
-            x_range = np.arange(start, end + 1) # +1 to include the last slice
-            
+
         ymin, ymax = axs[index].get_ylim()
 
         # Add legend
