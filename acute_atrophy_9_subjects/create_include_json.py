@@ -22,6 +22,8 @@ axThorLower, axLumb, ...).
 Input:
     -d: path to the dataset (BIDS format)
     -o: path to the output json file
+    --contrast: if provided, the script will only process scans that contain the selected contrast in their filename (e.g. T1w, T2w, ...)
+
 
 Author: Pierre-Louis Benveniste
 """
@@ -35,6 +37,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Create a json file listing all axial spinal cord scans in a BIDS dataset, grouped by subject and session.")
     parser.add_argument("-d", "--dataset", type=str, required=True, help="Path to the dataset (BIDS format).")
     parser.add_argument("-o", "--output", type=str, required=True, help="Path to the output json file.")
+    parser.add_argument("--contrast", type=str, help="If provided, the script will only process scans that contain the selected contrast in their filename (e.g. T1w, T2w, ...)")
     return parser.parse_args()
 
 
@@ -70,6 +73,9 @@ def main():
     included_scans = [f for f in all_scans if is_axial_spinal_cord_scan(f.name)]
     # Remove scans that are in the scans_to_remove list
     included_scans = [f for f in included_scans if f.name not in scans_to_remove]
+    # If a contrast is provided, keep only scans that contain the selected contrast in their filename
+    if args.contrast:
+        included_scans = [f for f in included_scans if args.contrast in f.name]
 
     # Group the included scans by subject and session, mapping each filename to its path
     scans_by_subject = {}
