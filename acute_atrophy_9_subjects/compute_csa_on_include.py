@@ -6,15 +6,16 @@ cross-sectional area (CSA) at each axial slice across the PAM50 template.
 Lesions smaller than --min-lesion-size (mm3) are filtered out as spurious detections
 (same threshold/logic as detect_critical_lesion.py's get_lesion_stats).
 
-For each scan, a per-scan csv is written with one row per axial slice:
-    - scan_axial_slice: native axial slice index (in the input scan's own space)
-    - pam50_axial_slice: corresponding axial slice index in the PAM50 template
+For each scan, a per-scan csv is written with one row per PAM50 axial slice:
+    - pam50_axial_slice: axial slice index in the PAM50 template
     - CSA_mm2: cross-sectional area at that slice
     - lesion_label: comma-separated label(s) of the lesion(s) present at that slice (empty if none)
     - lesion_volume_mm3: comma-separated volume(s) (mm3) of the lesion(s) present at that slice (empty if none)
 
-Per-scan csvs are then aggregated into a single csv across all scans (with subject_id,
-session_id and scan_file columns added).
+Per-scan csvs are then gathered into one csv per subject (all of that subject's timepoints/
+sessions, saved under <output_folder>/<subject_id>_csa_with_lesions.csv), and all subjects'
+rows are also aggregated into a single csv across the whole cohort. All three csvs add
+subject_id, session_id and scan_file columns.
 
 Input:
     -i / --include_json: path to the include json file (output of create_include_json.py)
@@ -32,7 +33,7 @@ import traceback
 import pandas as pd
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
-from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats
+from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_pam50_normalized_csa
 
 
 def parse_args():
@@ -43,49 +44,22 @@ def parse_args():
     return parser.parse_args()
 
 
-def compute_csa_native_and_pam50(sc_mask, vert_levels, output_path, qc_folder):
-    """
-    Computes the spinal cord CSA per axial slice, both in the scan's native slice numbering
-    and in the PAM50-normalized slice numbering. The two commands process the same slices in
-    the same order, so the resulting rows correspond 1:1 (only the reported "Slice (I->S)"
-    numbering, and its resulting sorting, differs between them).
-    Input:
-        sc_mask: Path to the SC segmentation mask (NIfTI format)
-        vert_levels: Path to the vertebral labeling (NIfTI format)
-        output_path: Path to the output folder
-        qc_folder: Path to the quality control folder
-    Output:
-        output_csv_native: Path to the csv file with native slice numbering
-        output_csv_pam50: Path to the csv file with PAM50 slice numbering
-    """
-    output_csv_native = os.path.join(output_path, "csa_native.csv")
-    output_csv_pam50 = os.path.join(output_path, "csa_pam50.csv")
-
-    if not os.path.exists(output_csv_native):
-        assert os.system(f"sct_process_segmentation -i {sc_mask} -discfile {vert_levels} -perslice 1 -o {output_csv_native} -qc {qc_folder}") == 0, "Error running the sct_process_segmentation command (native slices)"
-
-    if not os.path.exists(output_csv_pam50):
-        assert os.system(f"sct_process_segmentation -i {sc_mask} -discfile {vert_levels} -perslice 1 -normalize-PAM50 1 -o {output_csv_pam50} -qc {qc_folder}") == 0, "Error running the sct_process_segmentation command (PAM50 slices)"
-
-    return output_csv_native, output_csv_pam50
-
-
 def add_lesion_columns(df, lesion_statistics):
     """
-    Annotates each row (native axial slice) of df with the label(s) and volume(s) of any
+    Annotates each row (PAM50 axial slice) of df with the label(s) and volume(s) of any
     lesion(s) present at that slice. A slice with no lesion gets empty strings; a slice
     covered by multiple lesions gets comma-separated values for both columns.
     Input:
-        df: DataFrame with a "scan_axial_slice" column
+        df: DataFrame with a "pam50_axial_slice" column
         lesion_statistics: list of dicts (output of get_lesion_stats), each with keys
-            "label", "size" (mm3) and "slices" (native axial slice indices)
+            "label", "size" (mm3) and "slices_pam50" (PAM50 axial slice indices)
     Output:
         df with two additional columns: "lesion_label" and "lesion_volume_mm3"
     """
     lesion_labels = []
     lesion_volumes = []
-    for scan_slice in df["scan_axial_slice"]:
-        matching_lesions = [lesion for lesion in lesion_statistics if scan_slice in lesion["slices"]]
+    for pam50_slice in df["pam50_axial_slice"]:
+        matching_lesions = [lesion for lesion in lesion_statistics if pam50_slice in lesion["slices_pam50"]]
         lesion_labels.append(",".join(str(lesion["label"]) for lesion in matching_lesions))
         lesion_volumes.append(",".join(f"{lesion['size']:.3f}" for lesion in matching_lesions))
     df["lesion_label"] = lesion_labels
@@ -127,18 +101,16 @@ def compute_csa_with_lesions(input_scan, output_path, min_lesion_size_mm3=15.0, 
     # Lesion segmentation
     lesion_mask = run_lesion_segmentation(input_scan, sc_mask, lesion_mask_input, output_path, qc_folder)
 
-    # Lesion statistics (size-filtered; includes native slice indices and volume per lesion)
+    # Lesion statistics (size-filtered; includes PAM50 slice indices and volume per lesion)
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels, output_path, qc_folder, min_lesion_size_mm3=min_lesion_size_mm3)
 
-    # Compute CSA per native slice and per PAM50 slice
-    csv_native, csv_pam50 = compute_csa_native_and_pam50(sc_mask, vert_levels, output_path, qc_folder)
-    df_native = pd.read_csv(csv_native)
+    # Compute CSA per PAM50 axial slice
+    csv_pam50 = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
     df_pam50 = pd.read_csv(csv_pam50)
 
     df = pd.DataFrame({
-        "scan_axial_slice": df_native["Slice (I->S)"],
         "pam50_axial_slice": df_pam50["Slice (I->S)"],
-        "CSA_mm2": df_native["MEAN(area)"],
+        "CSA_mm2": df_pam50["MEAN(area)"],
     })
 
     # Annotate each slice with any lesion(s) present at that slice
@@ -157,12 +129,15 @@ def main():
     with open(args.include_json, "r") as f:
         include_data = json.load(f)
 
-    # Initialize a dataframe to store the per-slice results for all scans and a list to track failures
+    # Initialize a dataframe to store the per-slice results for all scans/subjects and a list to track failures
     df_all = pd.DataFrame()
     failed_scans = []
 
     # Iterate over all subjects, sessions and scans listed in the include json file
     for subject_id, sessions in include_data.items():
+        # Accumulate all timepoints (sessions) for this subject
+        df_subject = pd.DataFrame()
+
         for session_id, scans in sessions.items():
             for scan_name, scan_path in scans.items():
                 print(f"Processing {scan_name} ({subject_id}/{session_id})")
@@ -172,13 +147,21 @@ def main():
                     df_scan["subject_id"] = subject_id
                     df_scan["session_id"] = session_id
                     df_scan["scan_file"] = scan_path
-                    df_all = pd.concat([df_all, df_scan], ignore_index=True)
+                    df_subject = pd.concat([df_subject, df_scan], ignore_index=True)
                 except Exception as e:
                     print(f"Error processing {scan_path}: {e}")
                     traceback.print_exc()
                     failed_scans.append({"subject_id": subject_id, "session_id": session_id, "scan_file": scan_path, "error": str(e)})
 
-    # Save the aggregated per-slice CSA report for all scans
+        # Save the per-subject csv (all of this subject's timepoints), if any scan succeeded
+        if not df_subject.empty:
+            subject_csv_path = os.path.join(output_folder, f"{subject_id}_csa_with_lesions.csv")
+            df_subject.to_csv(subject_csv_path, index=False)
+            print(f"Subject CSA report saved to: {subject_csv_path}")
+
+        df_all = pd.concat([df_all, df_subject], ignore_index=True)
+
+    # Save the aggregated per-slice CSA report for all scans/subjects
     final_csv_path = os.path.join(output_folder, "final_csa_with_lesions.csv")
     df_all.to_csv(final_csv_path, index=False)
     print(f"Final CSA report saved to: {final_csv_path}")
