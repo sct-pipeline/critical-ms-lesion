@@ -11,6 +11,7 @@ Input:
     -i / --include-json: path to the include json file (output of create_include_json.py)
     -d / --dataset_path: path to the dataset (BIDS format), used to locate participants.tsv
     --hc-data: path to the healthy control data folder (used for atrophy detection)
+    --min-lesion-size: minimum lesion size (in mm3) to keep a lesion; smaller lesions are treated as spurious detections and discarded (default: 15.0)
     -o / --output_folder: path to the output folder where results will be saved
 
 Author: Pierre-Louis Benveniste
