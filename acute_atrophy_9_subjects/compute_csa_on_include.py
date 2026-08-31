@@ -23,6 +23,7 @@ Input:
     --min-lesion-size: minimum lesion size (in mm3) to keep a lesion; smaller lesions are
         treated as spurious detections and discarded (default: 15.0)
     -o / --output_folder: path to the output folder where results will be saved
+    -iso: whether to resample the scan to an isotropic resolution of its highest resolution dimension (default: False)
 
 Author: Pierre-Louis Benveniste
 """
@@ -32,6 +33,7 @@ import json
 import argparse
 import traceback
 import pandas as pd
+import nibabel as nib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
 from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_pam50_normalized_csa
@@ -42,6 +44,7 @@ def parse_args():
     parser.add_argument("-i", "--include_json", type=str, required=True, help="Path to the include json file (output of create_include_json.py).")
     parser.add_argument("--min-lesion-size", type=float, default=15.0, help="Minimum lesion size (in mm3) to keep a lesion; smaller lesions are treated as spurious detections and discarded (default: 15.0)")
     parser.add_argument("-o", "--output_folder", type=str, required=True, help="Path to the output folder where the CSA results will be saved.")
+    parser.add_argument("--iso", action="store_true", help="Whether to resample the scan to an isotropic resolution of its highest resolution dimension (i.e. minimum voxel size) (default: False).")
     return parser.parse_args()
 
 
@@ -68,7 +71,8 @@ def add_lesion_columns(df, lesion_statistics):
     return df
 
 
-def compute_csa_with_lesions(input_scan, output_path, min_lesion_size_mm3=15.0, lesion_mask_input=None):
+
+def compute_csa_with_lesions(input_scan, output_path, min_lesion_size_mm3=15.0, lesion_mask_input=None, iso=False):
     """
     Segments the SC, lesions and vertebrae for one scan, then builds a per-slice CSA csv
     annotated with lesion label(s)/volume(s).
@@ -92,8 +96,17 @@ def compute_csa_with_lesions(input_scan, output_path, min_lesion_size_mm3=15.0, 
         return output_csv_path
 
     print(f"Computing CSA with lesions for scan: {input_scan}")
-    # Copy img to output folder
-    assert os.system(f"cp {input_scan} {output_path}") == 0, "Error copying the input scan to the output folder"
+    if iso:
+        print("Resampling scan to isotropic resolution of its highest resolution dimension...")
+        # Resample the scan to isotropic resolution (highest resolution dimension)
+        resampled_scan_path = os.path.join(output_path, input_scan.split("/")[-1].replace(".nii.gz", "_iso.nii.gz"))
+        resolution = nib.load(input_scan).header.get_zooms()
+        min_resolution = min(resolution)
+        assert os.system(f"sct_resample -i {input_scan} -mm {min_resolution}x{min_resolution}x{min_resolution} -o {resampled_scan_path}") == 0, "Error resampling the input scan"
+        input_scan = resampled_scan_path
+    else:
+        # Copy img to output folder
+        assert os.system(f"cp {input_scan} {output_path}") == 0, "Error copying the input scan to the output folder"
 
     # SC segmentation
     sc_mask = run_sc_segmentation(input_scan, output_path, qc_folder)
@@ -144,7 +157,7 @@ def main():
             for scan_name, scan_path in scans.items():
                 print(f"Processing {scan_name} ({subject_id}/{session_id})")
                 try:
-                    scan_csv = compute_csa_with_lesions(scan_path, output_folder, min_lesion_size_mm3=args.min_lesion_size)
+                    scan_csv = compute_csa_with_lesions(scan_path, output_folder, min_lesion_size_mm3=args.min_lesion_size, iso=args.iso)
                     df_scan = pd.read_csv(scan_csv)
                     df_scan["subject_id"] = subject_id
                     df_scan["session_id"] = session_id
