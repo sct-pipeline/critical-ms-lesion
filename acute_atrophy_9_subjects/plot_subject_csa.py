@@ -58,8 +58,11 @@ def plot_subject_csa(input_csv, output_png, smooth_window=1):
     for session_idx, session_id in enumerate(sessions):
         df_session = df[df["session_id"] == session_id].sort_values("pam50_axial_slice").copy()
         if smooth_window > 1:
-            df_session["CSA_mm2"] = df_session["CSA_mm2"].rolling(
-                window=smooth_window, center=True, min_periods=1).mean()
+            raw_csa = df_session["CSA_mm2"]
+            smoothed_csa = raw_csa.rolling(window=smooth_window, center=True, min_periods=smooth_window).mean()
+            # Keep the raw value at edge slices where a full window isn't available, instead
+            # of averaging over a partial (smaller) window there.
+            df_session["CSA_mm2"] = smoothed_csa.fillna(raw_csa)
         color = palette[session_idx]
         sns.lineplot(ax=ax, x="pam50_axial_slice", y="CSA_mm2", data=df_session, linewidth=2,
                      color=color, label=session_id)
@@ -106,8 +109,8 @@ def plot_subject_csa(input_csv, output_png, smooth_window=1):
     ax.invert_xaxis()
     ax.yaxis.grid(True)
     ax.set_axisbelow(True)
-    # ax.set_ylim(40, 100)
-    # ax.set_xlim(df_vert["Slice (I->S)"].max(), df_vert["Slice (I->S)"].min())
+    ax.set_ylim(40, 100)
+    ax.set_xlim(df_vert["Slice (I->S)"].max(), df_vert["Slice (I->S)"].min())
 
     output_dir = os.path.dirname(os.path.abspath(output_png))
     os.makedirs(output_dir, exist_ok=True)
