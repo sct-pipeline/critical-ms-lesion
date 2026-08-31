@@ -8,6 +8,7 @@ Lesions smaller than --min-lesion-size (mm3) are filtered out as spurious detect
 
 For each scan, a per-scan csv is written with one row per PAM50 axial slice:
     - pam50_axial_slice: axial slice index in the PAM50 template
+    - VertLevel: vertebral level at that slice
     - CSA_mm2: cross-sectional area at that slice
     - lesion_label: comma-separated label(s) of the lesion(s) present at that slice (empty if none)
     - lesion_volume_mm3: comma-separated volume(s) (mm3) of the lesion(s) present at that slice (empty if none)
@@ -110,6 +111,7 @@ def compute_csa_with_lesions(input_scan, output_path, min_lesion_size_mm3=15.0, 
 
     df = pd.DataFrame({
         "pam50_axial_slice": df_pam50["Slice (I->S)"],
+        "VertLevel": df_pam50["VertLevel"],
         "CSA_mm2": df_pam50["MEAN(area)"],
     })
 
