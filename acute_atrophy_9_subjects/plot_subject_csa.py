@@ -8,6 +8,7 @@ in generate_csa_plot.py.
 Input:
     -i / --input_csv: path to a subject's csv file (output of compute_csa_on_include.py)
     -o / --output: path to the output png file
+    -s / --smooth_window: window size (in slices) for moving-average smoothing of CSA (default 1, no smoothing)
 
 Author: Pierre-Louis Benveniste
 """
@@ -26,10 +27,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Plot CSA across PAM50 axial slices and vertebral levels for a single subject, one line per session.")
     parser.add_argument("-i", "--input_csv", type=str, required=True, help="Path to a subject's csv file (output of compute_csa_on_include.py).")
     parser.add_argument("-o", "--output", type=str, required=True, help="Path to the output png file.")
+    parser.add_argument("-s", "--smooth_window", type=int, default=1,
+                         help="Window size (in slices) for moving-average smoothing of CSA before plotting. "
+                              "Default 1 (no smoothing).")
     return parser.parse_args()
 
 
-def plot_subject_csa(input_csv, output_png):
+def plot_subject_csa(input_csv, output_png, smooth_window=1):
     df = pd.read_csv(input_csv)
 
     subject_id = df["subject_id"].iloc[0] if "subject_id" in df.columns and not df.empty else os.path.basename(input_csv).replace("_csa_with_lesions.csv", "")
@@ -52,7 +56,10 @@ def plot_subject_csa(input_csv, output_png):
     palette = sns.color_palette("husl", len(sessions))
 
     for session_idx, session_id in enumerate(sessions):
-        df_session = df[df["session_id"] == session_id].sort_values("pam50_axial_slice")
+        df_session = df[df["session_id"] == session_id].sort_values("pam50_axial_slice").copy()
+        if smooth_window > 1:
+            df_session["CSA_mm2"] = df_session["CSA_mm2"].rolling(
+                window=smooth_window, center=True, min_periods=1).mean()
         color = palette[session_idx]
         sns.lineplot(ax=ax, x="pam50_axial_slice", y="CSA_mm2", data=df_session, linewidth=2,
                      color=color, label=session_id)
@@ -99,6 +106,8 @@ def plot_subject_csa(input_csv, output_png):
     ax.invert_xaxis()
     ax.yaxis.grid(True)
     ax.set_axisbelow(True)
+    # ax.set_ylim(40, 100)
+    # ax.set_xlim(df_vert["Slice (I->S)"].max(), df_vert["Slice (I->S)"].min())
 
     output_dir = os.path.dirname(os.path.abspath(output_png))
     os.makedirs(output_dir, exist_ok=True)
@@ -110,4 +119,4 @@ def plot_subject_csa(input_csv, output_png):
 
 if __name__ == "__main__":
     args = parse_args()
-    plot_subject_csa(args.input_csv, args.output)
+    plot_subject_csa(args.input_csv, args.output, args.smooth_window)
