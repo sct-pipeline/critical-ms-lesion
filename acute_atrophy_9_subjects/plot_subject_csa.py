@@ -109,8 +109,8 @@ def plot_subject_csa(input_csv, output_png, smooth_window=1):
     ax.invert_xaxis()
     ax.yaxis.grid(True)
     ax.set_axisbelow(True)
-    ax.set_ylim(40, 100)
-    ax.set_xlim(df_vert["Slice (I->S)"].max(), df_vert["Slice (I->S)"].min())
+    # ax.set_ylim(40, 100)
+    # ax.set_xlim(df_vert["Slice (I->S)"].max(), df_vert["Slice (I->S)"].min())
 
     output_dir = os.path.dirname(os.path.abspath(output_png))
     os.makedirs(output_dir, exist_ok=True)
