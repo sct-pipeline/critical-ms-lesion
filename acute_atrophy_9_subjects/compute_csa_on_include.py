@@ -18,6 +18,11 @@ sessions, saved under <output_folder>/<subject_id>_csa_with_lesions.csv), and al
 rows are also aggregated into a single csv across the whole cohort. All three csvs add
 subject_id, session_id and scan_file columns.
 
+For each subject, a CSA plot (plot_subject_csa.py) and a per-lesion-area AUC csv
+(compute_lesion_auc.py) are also generated, each without smoothing and with smooth_window=10:
+    - <subject_id>_csa_plot.png / <subject_id>_csa_plot_smooth10.png
+    - <subject_id>_lesion_auc.csv / <subject_id>_lesion_auc_smooth10.csv
+
 Input:
     -i / --include_json: path to the include json file (output of create_include_json.py)
     --min-lesion-size: minimum lesion size (in mm3) to keep a lesion; smaller lesions are
@@ -37,6 +42,8 @@ import nibabel as nib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
 from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_pam50_normalized_csa
+from plot_subject_csa import plot_subject_csa
+from compute_lesion_auc import compute_lesion_auc
 
 
 def parse_args():
@@ -173,6 +180,14 @@ def main():
             subject_csv_path = os.path.join(output_folder, f"{subject_id}_csa_with_lesions.csv")
             df_subject.to_csv(subject_csv_path, index=False)
             print(f"Subject CSA report saved to: {subject_csv_path}")
+
+            # Plot the subject's CSA, without and with smoothing
+            plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot.png"), smooth_window=1)
+            plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_smooth10.png"), smooth_window=10)
+
+            # Compute the per-lesion-area AUC, without and with smoothing
+            compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc.csv"), smooth_window=1)
+            compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc_smooth10.csv"), smooth_window=10)
 
         df_all = pd.concat([df_all, df_subject], ignore_index=True)
 
