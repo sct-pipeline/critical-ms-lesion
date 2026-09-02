@@ -25,10 +25,17 @@ Output columns:
     - start_pam50_slice / end_pam50_slice: PAM50 slice range of the lesion area (same for every
       timepoint, since the area is defined by the union of lesion extents across timepoints)
     - AUC: area under the CSA_mm2 curve over that slice range, for that timepoint
+    - AUC_ratio_to_previous_timepoint: AUC at this timepoint divided by AUC at the previous
+      timepoint (within the same lesion area); NaN for each lesion area's first timepoint
+    - days_since_previous_timepoint: number of days between this session's date and the previous
+      timepoint's (within the same lesion area), parsed from the YYYYMMDD date embedded in
+      session_id (e.g. "ses-20111227"); NaN for each lesion area's first timepoint, or if a
+      session_id has no parseable date
 
 Author: Pierre-Louis Benveniste
 """
 import os
+import re
 import argparse
 import numpy as np
 import pandas as pd
@@ -66,12 +73,16 @@ def smooth_csa(df, smooth_window):
 
 def get_common_slices(df):
     """
-    Returns the set of pam50_axial_slice values present in every session of df, so that all
-    timepoints can be compared/truncated to the exact same PAM50 slice range.
+    Returns the set of pam50_axial_slice values that have an actual (non-NaN) CSA_mm2 in every
+    session of df, so that all timepoints can be compared/truncated to the exact same PAM50
+    slice range. A session's scan may not physically extend far enough to cover every PAM50
+    slice its vertebral labeling implies, leaving a row present but CSA_mm2 as NaN there; such
+    slices must not count as "common".
     """
+    df_with_csa = df.dropna(subset=["CSA_mm2"])
     common_slices = None
     for session_id in df["session_id"].unique():
-        session_slices = set(df.loc[df["session_id"] == session_id, "pam50_axial_slice"])
+        session_slices = set(df_with_csa.loc[df_with_csa["session_id"] == session_id, "pam50_axial_slice"])
         common_slices = session_slices if common_slices is None else common_slices & session_slices
     return common_slices
 
@@ -117,6 +128,17 @@ def compute_auc(df_session, start_slice, end_slice):
     return np.trapz(df_range["CSA_mm2"], df_range["pam50_axial_slice"])
 
 
+def parse_session_date(session_id):
+    """
+    Extracts an 8-digit YYYYMMDD date from a session_id (e.g. "ses-20111227" -> 2011-12-27).
+    Returns None if no 8-digit date could be found.
+    """
+    match = re.search(r"(\d{8})", str(session_id))
+    if not match:
+        return None
+    return pd.to_datetime(match.group(1), format="%Y%m%d")
+
+
 def compute_lesion_auc(input_csv, output_csv, smooth_window=1):
     df = pd.read_csv(input_csv)
 
@@ -146,7 +168,26 @@ def compute_lesion_auc(input_csv, output_csv, smooth_window=1):
                 "AUC": auc,
             })
 
-    df_out = pd.DataFrame(rows)
+    output_columns = ["subject_id", "lesion_area_id", "session_id", "start_pam50_slice", "end_pam50_slice",
+                       "AUC", "AUC_ratio_to_previous_timepoint", "days_since_previous_timepoint"]
+
+    if not rows:
+        # No lesion at any timepoint for this subject: nothing to group/compute, just write
+        # an empty csv with the expected columns.
+        df_out = pd.DataFrame(columns=output_columns)
+    else:
+        df_out = pd.DataFrame(rows)
+
+        # Ratio of this timepoint's AUC to the previous timepoint's, within each lesion area
+        # (rows are already ordered chronologically by session_id within each lesion_area_id group).
+        # NaN for each lesion area's first timepoint, since there is no previous one to compare to.
+        df_out["AUC_ratio_to_previous_timepoint"] = df_out.groupby("lesion_area_id")["AUC"].apply(
+            lambda auc: auc / auc.shift(1)).reset_index(drop=True)
+
+        # Days since the previous timepoint, within each lesion area (same chronological ordering
+        # as above), parsed from the YYYYMMDD date embedded in session_id.
+        session_date = df_out["session_id"].apply(parse_session_date)
+        df_out["days_since_previous_timepoint"] = session_date.groupby(df_out["lesion_area_id"]).diff().dt.days
 
     output_dir = os.path.dirname(os.path.abspath(output_csv))
     os.makedirs(output_dir, exist_ok=True)
