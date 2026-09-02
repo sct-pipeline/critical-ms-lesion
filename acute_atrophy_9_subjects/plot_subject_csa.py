@@ -17,6 +17,7 @@ import sys
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import seaborn as sns
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
@@ -51,9 +52,11 @@ def plot_subject_csa(input_csv, output_png, smooth_window=1):
         ax.fill_between(lesion_slices_agg.index, 0, 1, where=lesion_slices_agg.values, color=LESION_COLOR, alpha=0.15,
                          transform=ax.get_xaxis_transform(), label='Lesion')
 
-    # One line per session, sorted so the legend/colors are stable across runs
+    # One line per session, sorted chronologically (session_id is e.g. "ses-YYYYMMDD", so a
+    # lexical sort is also a chronological sort) so the color gradient tracks time.
     sessions = sorted(df["session_id"].unique())
-    palette = sns.color_palette("husl", len(sessions))
+    n_sessions = len(sessions)
+    palette = [cm.viridis(1 - i / max(n_sessions - 1, 1)) for i in range(n_sessions)]
 
     for session_idx, session_id in enumerate(sessions):
         df_session = df[df["session_id"] == session_id].sort_values("pam50_axial_slice").copy()
