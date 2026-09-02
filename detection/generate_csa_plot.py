@@ -209,12 +209,15 @@ def create_lineplot(df, df_ses1, subID, number_of_subjects, path_out_png, lesion
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion in enumerate(lesion_statistics):
             lesion_slices = sorted(list(lesion['slices_pam50']))
+            # Skip lesions with no PAM50-mapped slices (nothing to shade for them)
+            if not lesion_slices:
+                continue
             start, end = lesion_slices[0], lesion_slices[-1]
             # Create the x-range for this specific lesion
             x_range = np.arange(start, end + 1) # +1 to include the last slice
             # Fill the background from y=0 to y=1
             axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-        
+
         # Note: we are plotting slices not levels to avoid averaging across levels
         # Plot spine-generic multi-subject data for a given sex
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df[df['sex'] == sex], errorbar='sd',
@@ -323,12 +326,15 @@ def create_lineplot_asymetry(df_sub, subID, path_out_png, lesion_statistics):
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion in enumerate(lesion_statistics):
             lesion_slices = sorted(list(lesion['slices']))
+            # Skip lesions with no mapped slices (nothing to shade for them)
+            if not lesion_slices:
+                continue
             start, end = lesion_slices[0], lesion_slices[-1]
             # Create the x-range for this specific lesion
             x_range = np.arange(start, end + 1) # +1 to include the last slice
             # Fill the background from y=0 to y=1
             axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-            
+
         if metric in ["MEAN(area_quadrant_anterior_left)", "MEAN(area_quadrant_posterior_left)"]:
             # Plot the first metric in blue (corresponding to the left side)
             sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='blue',
@@ -482,7 +488,6 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
     }
 
     # Remove rows with NaN values
-    df_sub = df_sub.dropna(subset=METRICS_ASYMMETRY).reset_index(drop=True)
     df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
 
     # Number of subejct is the number of unique participant IDs in df_hc wiht the same sex
@@ -494,19 +499,23 @@ def create_lineplot_asymetry_with_hc(df_sub, sex, age, df_hc, subID, path_out_pn
         # We color the brackground colons where the lesions are
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion in enumerate(lesion_statistics):
+            df_sub_metric = df_sub.dropna(subset=[metric]).reset_index(drop=True)
             lesion_slices = sorted(list(lesion['slices_pam50']))
+            # Skip lesions with no PAM50-mapped slices (nothing to shade for them)
+            if not lesion_slices:
+                continue
             start, end = lesion_slices[0], lesion_slices[-1]
             # Create the x-range for this specific lesion
             x_range = np.arange(start, end + 1) # +1 to include the last slice
             # Fill the background from y=0 to y=1
             axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-        
+
         # Plot spine-generic multi-subject data for a given sex
         sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_hc[df_hc['sex'] == sex], errorbar='sd',
                         linewidth=2, color=COLORS_SEX[sex],
                         label=f'spine-generic {SEX_TO_LEGEND[sex]} (N = {number_of_subjects}) for age group {age_group}')
         # Plot the first metric in purple (corresponding to the right-left symmetry)
-        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub, linewidth=2, color='green',
+        sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_metric, linewidth=2, color='green',
                         label=f'{subID}')
         
         ymin, ymax = axs[index].get_ylim()
@@ -588,7 +597,6 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
     METRICS_LATERALITY = ["white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)"]
 
     # Remove rows with NaN values
-    df_sub = df_sub.dropna(subset=METRICS_LATERALITY).reset_index(drop=True)
     df_sub = df_sub.dropna(subset=['VertLevel']).reset_index(drop=True)
 
     # Loop across metrics
@@ -598,18 +606,10 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
         colors = ['maroon', 'goldenrod', 'deeppink', 'darkorchid', 'olive']
         for lesion_idx, lesion_label in enumerate(df_sub['lesion_label'].unique()):
             # Paint areas where column total % (all tracts) is above 0 (i.e., lesioned) with a color corresponding to the lesion label
-            df_sub_lesion = df_sub[df_sub['lesion_label'] == lesion_label]
-            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_lesion, linewidth=2, color=colors[lesion_idx % len(colors)], 
+            df_sub_lesion = df_sub[(df_sub['lesion_label'] == lesion_label) & (df_sub[metric].notna())]
+            sns.lineplot(ax=axs[index], x="Slice (I->S)", y=metric, data=df_sub_lesion, linewidth=2, color=colors[lesion_idx % len(colors)],
                         label=f'Lesion {lesion_label}')
-            # We also want to point the background for each lesion
-            ## start is min slice where total % (all tracts) is above 0 for this lesion, end is max slice where total % (all tracts) is above 0 for this lesion
-            start = df_sub_lesion[df_sub_lesion["total % (all tracts)"] > 0]["Slice (I->S)"].min()
-            end = df_sub_lesion[df_sub_lesion["total % (all tracts)"] > 0]["Slice (I->S)"].max() 
-            # Create the x-range for this specific lesion
-            x_range = np.arange(start, end + 1) # +1 to include the last slice
-            # Fill the background from y=0 to y=1
-            axs[index].fill_between(x_range, 0, 1, color=colors[lesion_idx % len(colors)], alpha=0.2, label=f'Lesion {lesion_idx + 1}', transform=axs[index].get_xaxis_transform())
-        
+
         ymin, ymax = axs[index].get_ylim()
 
         # Add legend
@@ -636,26 +636,27 @@ def create_lineplot_laterality(df_sub, subID, path_out_png):
         axs[index].spines['bottom'].set_visible(True)
 
         # Get indices of slices corresponding vertebral levels
-        vert, ind_vert, ind_vert_mid = get_vert_indices(df_sub, single_subject=True)
-        vert = [int(v) for v in vert]  # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
+        df_vert = df_sub.drop_duplicates(subset="Slice (I->S)").sort_values("Slice (I->S)").reset_index(drop=True)
+        vert, ind_vert, ind_vert_mid = get_vert_indices(df_vert, single_subject=True)
+        vert = [int(v) for v in vert] # Convert vert to integer values to avoid issues with string labels when plotting vertebral levels
         # Insert a vertical line for each intervertebral disc
         for idx, x in enumerate(ind_vert[1:-1]):
-            axs[index].axvline(df_sub.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
+            axs[index].axvline(df_vert.loc[x, 'Slice (I->S)'], color='black', linestyle='--', alpha=0.5, zorder=0)
 
         # Insert a text label for each vertebral level
         for idx, x in enumerate(ind_vert_mid, 0):
             # Deal with labels
             if vert[x] > 19:
                 level = 'L' + str(vert[x] - 19)
-                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                axs[index].text(df_vert.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
                                 verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
-            if vert[x] > 7:
+            elif vert[x] > 7:
                 level = 'T' + str(vert[x] - 7)
-                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                axs[index].text(df_vert.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
                                 verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
             else:
                 level = 'C' + str(vert[x])
-                axs[index].text(df_sub.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
+                axs[index].text(df_vert.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
                                 verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
 
         # Invert x-axis

@@ -41,11 +41,11 @@ laterality_metrics = ['PAM50_00', 'PAM50_01', 'PAM50_02', 'PAM50_03', 'PAM50_04'
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Detect critical lesions in MRI scans.")
     parser.add_argument("-i", "--input", required=True, help="Path to the MRI scan (NIfTI format)")
-    parser.add_argument("--lesion-seg", help="Path to the lesion segmentation mask (NIfTI format)")
+    parser.add_argument("--lesion-seg", help="Path to the lesion segmentation mask (NIfTI format) if it exists. If not, it will be segmented using SCT.")
     parser.add_argument("--date-birth", required=True, type=str, help="Date of birth of the subject YYYYMMDD")
     parser.add_argument("--sex", required=True, choices=["M", "F"], help="Sex of the subject (used for atrophy detection)")
-    parser.add_argument("--pam50", help="Path to the PAM50 template folder containing all the csv files")
     parser.add_argument("--hc-data", required=True, help="Path to the healthy control data folder for asymmetry comparison")
+    parser.add_argument("--min-lesion-size", type=float, default=15.0, help="Minimum lesion size (in mm3) to keep a lesion; smaller lesions are treated as spurious detections and discarded (default: 15.0)")
     parser.add_argument("-o", "--output_folder", required=True, help="Path to the output folder")
     return parser.parse_args()
 
@@ -106,11 +106,14 @@ def run_vert_labeling(input_scan, output_path, qc_folder):
     return vert_levels
 
 
-def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output_path, qc_folder):
+def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output_path, qc_folder, min_lesion_size_mm3=15.0):
     """
     This function loads the lesion mask and computes the statistics of each lesion (CoM and size).
+    Lesions smaller than min_lesion_size_mm3 are treated as spurious detections and discarded (they are
+    excluded from lesion_stats, so downstream steps such as detect_laterality never analyze them).
     Input:
         lesion_mask: Path to the lesion mask (NIfTI format)
+        min_lesion_size_mm3: Minimum lesion size (in mm3) to keep a lesion
     Output:
         A list of dictionaries containing the statistics of each lesion (CoM and size)
     """
@@ -154,6 +157,11 @@ def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output
         lesion_mask = labeled_lesions == lesion_label
         # Lesion size
         lesion_size = float(np.sum(lesion_mask)*voxel_volume)
+        # Skip spurious lesions that are too small to be reliably analyzed downstream (e.g. sct_analyze_lesion
+        # can crash on lesions spanning a single voxel/slice near the edge of the volume)
+        if lesion_size < min_lesion_size_mm3:
+            print(f"Skipping lesion {lesion_label} (size={lesion_size:.2f} mm3 < {min_lesion_size_mm3} mm3 threshold)")
+            continue
         # Lesion CoM in voxel coordinates
         lesion_com = ndimage.center_of_mass(lesion_mask)
         lesion_com = (float(lesion_com[0]), float(lesion_com[1]), float(lesion_com[2]))
@@ -333,8 +341,8 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
     path_csa_plot_normalized = os.path.join(output_path, "csa_plot_normalized.png")
     path_csv_normalized = os.path.join(output_path, "csa_normalized.csv")
 
-    # if os.path.exists(path_csa_plot):
-    #     return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
+    if os.path.exists(path_csa_plot):
+        return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
 
     # Load the subject normalized CSA data
     df_sub, min_slice_idx, max_slice_idx = load_single_subject_data(pam50_norm_csa_file)   
@@ -473,8 +481,8 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     path_asymmetry_plot_hc_normalized = os.path.join(output_path, "asymmetry_plot_hc_normalized.png")
     path_csv_normalized = os.path.join(output_path, "asymmetry_normalized.csv")
     
-    # if os.path.exists(path_asymmetry_plot_hc):
-    #     return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
+    if os.path.exists(path_asymmetry_plot_hc):
+        return path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, path_csv_normalized
     
     # Load the asymmetry results
     df_asymmetry = pd.read_csv(asymmetry_csv)
@@ -643,9 +651,8 @@ def plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, ou
         # Create a Slice (I->S)	column in df_laterality equal to the index
         df_lesion["Slice (I->S)"] = df_lesion.index
         ## Add this df to the df_laterality dataframe with the lesion label as index
-        df_lesion["lesion_label"] = lesion_label
+        df_lesion["lesion_label"] = lesion["label"]
         df_laterality = pd.concat([df_laterality, df_lesion[["Slice (I->S)", "vert_level", "lesion_label", "white matter", "gray matter", "dorsal columns", "lateral funiculi", "ventral funiculi", "total % (all tracts)"]]], ignore_index=True)
-        
     # Rename the vert_level column to VertLevel
     df_laterality = df_laterality.rename(columns={"vert_level": "VertLevel"})
 
@@ -663,8 +670,8 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
     # Build output path
     subject_report_csv = os.path.join(output_path, "subject_report.csv")
 
-    # if os.path.exists(subject_report_csv):
-    #     return subject_report_csv
+    if os.path.exists(subject_report_csv):
+        return subject_report_csv
 
     # Initialize a sub df
     sub_df = pd.DataFrame()
@@ -732,7 +739,7 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
     return subject_report_csv
 
 
-def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None):
+def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None, min_lesion_size_mm3=15.0):
 
     # Build the output folder
     image_name = input_scan.split("/")[-1].replace(".nii.gz", "")
@@ -751,13 +758,27 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     assert os.system(f"cp {input_scan} {output_path}") == 0, "Error copying the input scan to the output folder"
     # SC segmentation
     sc_mask = run_sc_segmentation(input_scan, output_path, qc_folder)
-    # Vert labeling
-    vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
+
     # Lesion segmentation
     lesion_mask = run_lesion_segmentation(input_scan, sc_mask, lesion_mask_input, output_path, qc_folder)
-    
+
+    # If the lesion mask is empty (below min_lesion_size_mm3 in total), we return a report with no lesions
+    lesion_mask_data = nib.load(lesion_mask).get_fdata()
+    lesion_mask_voxel_volume = np.prod(nib.load(lesion_mask).header.get_zooms())
+    if np.sum(lesion_mask_data) * lesion_mask_voxel_volume < min_lesion_size_mm3: # 15mm3 default boundary fixed in this paper 10.1016/j.nicl.2018.01.011
+        print("No lesions detected in the scan.")
+        return None
+
+    # Vert labeling
+    vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
+
     # For each lesion, we compute its CoM and size
-    lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels,output_path, qc_folder)
+    lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels, output_path, qc_folder, min_lesion_size_mm3=min_lesion_size_mm3)
+
+    # If every lesion was filtered out as spurious/too small, we return a report with no lesions
+    if len(lesion_statistics) == 0:
+        print("No lesions above the minimum size threshold were detected in the scan.")
+        return None
 
     # Now we investigate the detection of spinal cord atrophy
     csa_file = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
@@ -790,4 +811,4 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
 
 if __name__ == "__main__":
     args = parse_arguments()
-    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg)
+    _ = detect_critical_lesions(args.input, args.sex, args.date_birth, args.output_folder, args.hc_data, lesion_mask_input=args.lesion_seg, min_lesion_size_mm3=args.min_lesion_size)
