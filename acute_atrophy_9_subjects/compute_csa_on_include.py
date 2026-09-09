@@ -41,7 +41,7 @@ import pandas as pd
 import nibabel as nib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
-from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_pam50_normalized_csa
+from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_csa
 from plot_subject_csa import plot_subject_csa
 from compute_lesion_auc import compute_lesion_auc
 
@@ -126,13 +126,23 @@ def compute_csa_with_lesions(input_scan, output_path, min_lesion_size_mm3=15.0, 
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels, output_path, qc_folder, min_lesion_size_mm3=min_lesion_size_mm3)
 
     # Compute CSA per PAM50 axial slice
-    csv_pam50 = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
+    csv_pam50 = compute_csa(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
     df_pam50 = pd.read_csv(csv_pam50)
+
+    # We now compute the area for the right and left hemicord separately, and add them to the dataframe
+    df_pam50["MEAN(area_left)"] = df_pam50["MEAN(area_quadrant_anterior_left)"] + df_pam50["MEAN(area_quadrant_posterior_left)"]
+    df_pam50["MEAN(area_right)"] = df_pam50["MEAN(area_quadrant_anterior_right)"] + df_pam50["MEAN(area_quadrant_posterior_right)"]
 
     df = pd.DataFrame({
         "pam50_axial_slice": df_pam50["Slice (I->S)"],
         "VertLevel": df_pam50["VertLevel"],
         "CSA_mm2": df_pam50["MEAN(area)"],
+        "CSA_left_mm2": df_pam50["MEAN(area_left)"],
+        "CSA_right_mm2": df_pam50["MEAN(area_right)"],
+        "CSA_anterior_left_mm2": df_pam50["MEAN(area_quadrant_anterior_left)"],
+        "CSA_anterior_right_mm2": df_pam50["MEAN(area_quadrant_anterior_right)"],
+        "CSA_posterior_left_mm2": df_pam50["MEAN(area_quadrant_posterior_left)"],
+        "CSA_posterior_right_mm2": df_pam50["MEAN(area_quadrant_posterior_right)"]
     })
 
     # Annotate each slice with any lesion(s) present at that slice
