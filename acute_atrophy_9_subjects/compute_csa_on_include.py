@@ -18,9 +18,12 @@ sessions, saved under <output_folder>/<subject_id>_csa_with_lesions.csv), and al
 rows are also aggregated into a single csv across the whole cohort. All three csvs add
 subject_id, session_id and scan_file columns.
 
-For each subject, a CSA plot (plot_subject_csa.py) and a per-lesion-area AUC csv
-(compute_lesion_auc.py) are also generated, each without smoothing and with smooth_window=10:
+For each subject, a full-cord CSA plot, a left/right hemicord CSA plot (both plot_subject_csa.py,
+the latter via its hemi=True flag) and a per-lesion-area AUC csv (compute_lesion_auc.py, with
+full/left/right AUC columns) are also generated, each without smoothing and with
+smooth_window=10:
     - <subject_id>_csa_plot.png / <subject_id>_csa_plot_smooth10.png
+    - <subject_id>_csa_plot_hemi.png / <subject_id>_csa_plot_hemi_smooth10.png
     - <subject_id>_lesion_auc.csv / <subject_id>_lesion_auc_smooth10.csv
 
 Input:
@@ -41,7 +44,7 @@ import pandas as pd
 import nibabel as nib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
-from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_pam50_normalized_csa
+from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_csa
 from plot_subject_csa import plot_subject_csa
 from compute_lesion_auc import compute_lesion_auc
 
@@ -126,13 +129,23 @@ def compute_csa_with_lesions(input_scan, output_path, min_lesion_size_mm3=15.0, 
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels, output_path, qc_folder, min_lesion_size_mm3=min_lesion_size_mm3)
 
     # Compute CSA per PAM50 axial slice
-    csv_pam50 = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
+    csv_pam50 = compute_csa(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
     df_pam50 = pd.read_csv(csv_pam50)
+
+    # We now compute the area for the right and left hemicord separately, and add them to the dataframe
+    df_pam50["MEAN(area_left)"] = df_pam50["MEAN(area_quadrant_anterior_left)"] + df_pam50["MEAN(area_quadrant_posterior_left)"]
+    df_pam50["MEAN(area_right)"] = df_pam50["MEAN(area_quadrant_anterior_right)"] + df_pam50["MEAN(area_quadrant_posterior_right)"]
 
     df = pd.DataFrame({
         "pam50_axial_slice": df_pam50["Slice (I->S)"],
         "VertLevel": df_pam50["VertLevel"],
         "CSA_mm2": df_pam50["MEAN(area)"],
+        "CSA_left_mm2": df_pam50["MEAN(area_left)"],
+        "CSA_right_mm2": df_pam50["MEAN(area_right)"],
+        "CSA_anterior_left_mm2": df_pam50["MEAN(area_quadrant_anterior_left)"],
+        "CSA_anterior_right_mm2": df_pam50["MEAN(area_quadrant_anterior_right)"],
+        "CSA_posterior_left_mm2": df_pam50["MEAN(area_quadrant_posterior_left)"],
+        "CSA_posterior_right_mm2": df_pam50["MEAN(area_quadrant_posterior_right)"]
     })
 
     # Annotate each slice with any lesion(s) present at that slice
@@ -185,7 +198,11 @@ def main():
             plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot.png"), smooth_window=1)
             plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_smooth10.png"), smooth_window=10)
 
-            # Compute the per-lesion-area AUC, without and with smoothing
+            # Plot the subject's left/right hemicord CSA, without and with smoothing
+            plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_hemi.png"), smooth_window=1, hemi=True)
+            plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_hemi_smooth10.png"), smooth_window=10, hemi=True)
+
+            # Compute the per-lesion-area AUC (full cord, left and right hemicord), without and with smoothing
             compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc.csv"), smooth_window=1)
             compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc_smooth10.csv"), smooth_window=10)
 

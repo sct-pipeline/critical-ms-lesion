@@ -217,28 +217,6 @@ def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output
     return lesion_stats
 
 
-def compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder):
-    """
-    This function computes the spinal cord CSA at each vertebral level and translates to the PAM50 template.
-
-    Input:
-        sc_mask: Path to the SC segmentation mask (NIfTI format)
-        vert_levels: Path to the vertebral labeling (NIfTI format)
-    Output:
-        A dictionary containing the atrophy results (mean cross-sectional area at each vertebral level)
-    """
-    # Build output csv path
-    output_csv = os.path.join(output_path, "csa.csv")
-
-    if os.path.exists(output_csv):
-        return output_csv
-
-    # Run the SCT command to compute atrophy
-    assert os.system(f"sct_process_segmentation -i {sc_mask} -discfile {vert_levels} -perslice 1 -normalize-PAM50 1 -o {output_csv} -qc {qc_folder}") == 0, "Error running the sct_compute_atrophy command"
-
-    return output_csv
-
-
 def filter_normative_data(df_normative_data, sex, age):
     """
     This functions filters the normative data to keep only the subjects:
@@ -390,23 +368,23 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
     return path_csa_plot, path_csa_plot_normalized, path_csv_normalized
 
 
-def compute_asymmetry(image, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=False):
+def compute_csa(image, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=False):
     """
-    This function computes the asymmetry of the spinal cord at each vertebral level.
+    This function computes the csa and the asymmetry measures of the spinal cord at each vertebral level.
     Input:
         image: Path to the input image (NIfTI format)
         sc_mask: Path to the SC segmentation mask (NIfTI format)
         vert_levels: Path to the vertebral labeling (NIfTI format)
         output_path: Path to the output folder
     Output:
-        output_csv: Path to the output csv file containing the asymmetry results
+        output_csv: Path to the output csv file containing the csa and asymmetry results
     """
 
     # Build output csv path
     if pam50_normalization:
-        output_csv = os.path.join(output_path, "asymmetry_normalized_pam50.csv")
+        output_csv = os.path.join(output_path, "csa_pam50.csv")
     else:
-        output_csv = os.path.join(output_path, "asymmetry.csv")
+        output_csv = os.path.join(output_path, "csa.csv")
 
     if os.path.exists(output_csv):
         return output_csv
@@ -781,22 +759,13 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
         return None
 
     # Now we investigate the detection of spinal cord atrophy
-    csa_file = compute_pam50_normalized_csa(sc_mask, vert_levels, output_path, qc_folder)
+    csa_file = compute_csa(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
 
     # Now we plot the CSA compared to the PAM50
-    path_csa_plot, path_csa_plot_normalized, csa_file_normalized = plot_csa(csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
-
-    # # Now we perform asymetry computation
-    # asymetry_csv = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder)
-
-    # # Plot asymetry
-    # path_asymmetry_plot = plot_asymmetry(asymetry_csv, lesion_statistics, output_path)
-
-    # Now compute asymetry with PAM50 normalization to be able to compare with healthy controls
-    asymetry_csv_pam50 = compute_asymmetry(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
+    path_csa_plot, path_csa_plot_normalized, csa_file_normalized_outside_lesion = plot_csa(csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
     
     # Plot asymetry with HC group
-    path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, asymetry_csv_pam50_normalized = plot_asymmetry_with_hc(asymetry_csv_pam50, sex, age, path_hc_data, lesion_statistics, output_path)
+    path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, asymetry_csv_normalized_outside_lesion = plot_asymmetry_with_hc(csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
 
     # Detect laterality
     laterality_report_folder = detect_laterality(input_scan, lesion_mask, sc_mask, vert_levels, lesion_statistics, output_path, qc_folder)
@@ -805,7 +774,7 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     laterality_plot, dict_laterality_reports = plot_laterality(laterality_report_folder, lesion_mask, lesion_statistics, output_path)
 
     # Aggregate metrics per subject
-    subject_wise_report_csv_path = aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, asymetry_csv_pam50, asymetry_csv_pam50_normalized, dict_laterality_reports, output_path)
+    subject_wise_report_csv_path = aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized_outside_lesion, csa_file, asymetry_csv_normalized_outside_lesion, dict_laterality_reports, output_path)
 
     return subject_wise_report_csv_path
 
