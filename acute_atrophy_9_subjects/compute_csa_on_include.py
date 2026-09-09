@@ -18,9 +18,12 @@ sessions, saved under <output_folder>/<subject_id>_csa_with_lesions.csv), and al
 rows are also aggregated into a single csv across the whole cohort. All three csvs add
 subject_id, session_id and scan_file columns.
 
-For each subject, a CSA plot (plot_subject_csa.py) and a per-lesion-area AUC csv
-(compute_lesion_auc.py) are also generated, each without smoothing and with smooth_window=10:
+For each subject, a full-cord CSA plot, a left/right hemicord CSA plot (both plot_subject_csa.py,
+the latter via its hemi=True flag) and a per-lesion-area AUC csv (compute_lesion_auc.py, with
+full/left/right AUC columns) are also generated, each without smoothing and with
+smooth_window=10:
     - <subject_id>_csa_plot.png / <subject_id>_csa_plot_smooth10.png
+    - <subject_id>_csa_plot_hemi.png / <subject_id>_csa_plot_hemi_smooth10.png
     - <subject_id>_lesion_auc.csv / <subject_id>_lesion_auc_smooth10.csv
 
 Input:
@@ -195,7 +198,11 @@ def main():
             plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot.png"), smooth_window=1)
             plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_smooth10.png"), smooth_window=10)
 
-            # Compute the per-lesion-area AUC, without and with smoothing
+            # Plot the subject's left/right hemicord CSA, without and with smoothing
+            plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_hemi.png"), smooth_window=1, hemi=True)
+            plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_hemi_smooth10.png"), smooth_window=10, hemi=True)
+
+            # Compute the per-lesion-area AUC (full cord, left and right hemicord), without and with smoothing
             compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc.csv"), smooth_window=1)
             compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc_smooth10.csv"), smooth_window=10)
 
