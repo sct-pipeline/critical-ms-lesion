@@ -26,7 +26,7 @@ from tqdm import tqdm
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from include_io import load_include, check_entries_exist, get_pred_paths
+from include_io import load_include, get_pred_paths
 
 
 def parse_args():
