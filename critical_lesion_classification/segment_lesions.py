@@ -76,7 +76,6 @@ def main():
     rows = []
     failed_scans = []
     for entry in tqdm(entry_list, desc="Segmenting lesions"):
-        image = entry["image"]
         sc_seg, lesion_seg = get_pred_paths(entry, output_folder)
         try:
             segment_scan(entry["image"], sc_seg, lesion_seg, qc_folder, overwrite=args.overwrite)
@@ -95,7 +94,6 @@ def main():
             "pred_sc_seg_file": sc_seg,
             "pred_seg_file": lesion_seg,
         })
-        break
 
     # Save the summary csv listing every scan with its segmentations
     summary_csv = os.path.join(output_folder, "predicted_segmentations.csv")
