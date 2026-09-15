@@ -217,21 +217,25 @@ def get_lesion_stats(input_lesion_mask_path, sc_mask, image, vert_levels, output
     return lesion_stats
 
 
-def filter_normative_data(df_normative_data, sex, age):
+def filter_normative_data(df_normative_data, sex, age, age_normalization=True):
     """
     This functions filters the normative data to keep only the subjects:
         - of the same sex
-        - in the same 10-year age group (if nobody in the same 10-year age group, we keep the closest age group (for example if a subject is 71 and nobody is between 70 and 80, we keep the subjects between 60 and 70 or between 80 and 90 depending on which group has the closest mean age to the subject's age))
+        - in the same 10-year age group, if age_normalization is True (if nobody in the same 10-year age group, we keep the closest age group (for example if a subject is 71 and nobody is between 70 and 80, we keep the subjects between 60 and 70 or between 80 and 90 depending on which group has the closest mean age to the subject's age))
     Input:
         - df_normative_data: Dataframe containing the normative data for the healthy control group
         - sex
         - age
+        - age_normalization: whether to also filter the healthy controls by age group (if False, all the healthy controls of the same sex are kept)
     Output:
         - df_normative_data_filtered: Dataframe containing the filtered normative data for the healthy control group
-        - age_group: the age group that was kept (either the same 10-year age group or the closest one)
+        - age_group: the age group that was kept (either the same 10-year age group or the closest one), or "all ages" without age normalization
     """
     # 1. Filter by sex first
     df_filtered = df_normative_data[df_normative_data['sex'] == sex].copy()
+    # Without age normalization, the subject is compared to all the healthy controls of the same sex
+    if not age_normalization:
+        return df_filtered, "all ages"
     # 2. Define the target 10-year age group (e.g., 71 -> [70, 80))
     lower_bound = (age // 10) * 10
     upper_bound = lower_bound + 10
@@ -299,7 +303,7 @@ def normalize_outside_lesion(df_normative_data, df_sub, lesion_statistics, path_
     return df_sub_normalized
 
 
-def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_path):
+def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_path, age_normalization=True):
     """
     Detect atrophies by comparing the PAM50-normalized CSA with the PAM50 template.
     Input:
@@ -309,6 +313,7 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
         hc_data: Path to the healthy control data folder
         lesion_statistics: List of dictionaries containing lesion statistics
         output_path: Path to the output folder
+        age_normalization: Whether to compare the subject only to the healthy controls of its age group (if False, all the healthy controls of the same sex are used)
     Output:
         path_csa_plot: Path to the output plot comparing the subject's CSA with the healthy control group
         path_csa_plot_normalized: Path to the output plot comparing the subject's normalized CSA with the healthy control group
@@ -331,8 +336,8 @@ def plot_csa(pam50_norm_csa_file, sex, age, hc_data, lesion_statistics, output_p
     df_normative_data = load_normative_data(path_HC, path_participants_tsv, min_slice=min_slice_idx, max_slice=max_slice_idx)
     # Get the subject ID and the nb of subjects
     subject_id = output_path.split("/")[-1]
-    # Filter the normative data to keep only the subjects of the same sex and age group
-    df_normative_data_filtered, age_group = filter_normative_data(df_normative_data, sex, age)
+    # Filter the normative data to keep only the subjects of the same sex (and age group, with age normalization)
+    df_normative_data_filtered, age_group = filter_normative_data(df_normative_data, sex, age, age_normalization=age_normalization)
     number_of_subjects = len(df_normative_data_filtered['participant_id'].unique())
 
     # Create the plots
@@ -441,7 +446,7 @@ def plot_asymmetry(asymmetry_csv, lesion_statistics, output_path):
     return path_asymmetry_plot
 
 
-def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statistics, output_path):
+def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statistics, output_path, age_normalization=True):
     """
     This function plots the asymmetry results compared to a healthy control group.
     Input:
@@ -451,6 +456,7 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
         path_hc_data: Path to the healthy control data folder for asymmetry comparison
         lesion_statistics: List of dictionaries containing lesion statistics
         output_path: Path to the output folder
+        age_normalization: Whether to compare the subject only to the healthy controls of its age group (if False, all the healthy controls of the same sex are used)
     Output:
         None
     """
@@ -490,8 +496,8 @@ def plot_asymmetry_with_hc(asymmetry_csv, sex, age, path_hc_data, lesion_statist
     df_hc["NORM_DIFF(area_quadrant_posterior_left-right)"] = df_hc["DIFF(area_quadrant_posterior_left-right)"] / df_hc["MEAN(area_quadrant_posterior_left)"]
     df_hc["NORM_DIFF(area_left-right)"] = df_hc["DIFF(area_left-right)"] / (df_hc["MEAN(area_quadrant_anterior_left)"] + df_hc["MEAN(area_quadrant_posterior_left)"])
 
-    # Filter the healthy control data to keep only the subjects of the same sex and age group
-    df_hc_filtered, age_group = filter_normative_data(df_hc, sex, age)
+    # Filter the healthy control data to keep only the subjects of the same sex (and age group, with age normalization)
+    df_hc_filtered, age_group = filter_normative_data(df_hc, sex, age, age_normalization=age_normalization)
 
     # Create the plot
     create_lineplot_asymetry_with_hc(df_asymmetry, sex, age, df_hc_filtered, subject_id, path_asymmetry_plot_hc, lesion_statistics, age_group)
@@ -567,17 +573,21 @@ def detect_laterality(image, lesion_mask, sc_mask, discs_levels, lesion_statisti
     disc_levels_only_2 = os.path.join(output_path, discs_levels.replace(".nii.gz", "_only_2.nii.gz"))
     assert os.system(f"sct_label_utils -i {discs_levels} -o {disc_levels_only_2} -keep {first_level},{second_level}") == 0, "Error running the sct_label_utils command to keep only vert 3 and 7"
 
-    # Register to template
-    # registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=seg,algo=bsplinesyn,slicewise=1,iter=20"
-    # registration_param = "step=1,type=seg,algo=centermass:step=2,type=seg,algo=bsplinesyn,metric=CC,iter=10,smooth=1,slicewise=1"
-    registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=im,algo=syn,iter=5,slicewise=1,metric=CC,smooth=0"
-    # registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=im,algo=syn,iter=5,slicewise=1,metric=CC,smooth=1"
-    # registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=seg,algo=bsplinesyn,iter=5,slicewise=1,metric=CC,smooth=1:step=3,type=im,algo=syn,iter=5,slicewise=1,metric=CC,smooth=1"
-    assert os.system(f"sct_register_to_template -i {image} -s {sc_mask} -ldisc {disc_levels_only_2} -param {registration_param} -c t2 -ofolder {laterality_folder} -qc {qc_folder}") == 0, "Error running the sct_register_to_template command"
-    
-    # Warp atlas to the subject space
+    # Register to template. The registration and the warped atlas only depend on the image and its
+    # SC segmentation, so we skip them when the laterality folder already holds them (e.g. when the
+    # pipeline is run twice on the same scan with two different lesion masks).
     path_template = os.path.join(laterality_folder, "warp_template2anat.nii.gz")
-    assert os.system(f"sct_warp_template -d {image} -w {path_template} -ofolder {laterality_folder} -qc {qc_folder}") == 0, "Error running the sct_warp_template command"
+    path_atlas = os.path.join(laterality_folder, "atlas")
+    if not (os.path.exists(path_template) and os.path.isdir(path_atlas)):
+        # registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=seg,algo=bsplinesyn,slicewise=1,iter=20"
+        # registration_param = "step=1,type=seg,algo=centermass:step=2,type=seg,algo=bsplinesyn,metric=CC,iter=10,smooth=1,slicewise=1"
+        registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=im,algo=syn,iter=5,slicewise=1,metric=CC,smooth=0"
+        # registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=im,algo=syn,iter=5,slicewise=1,metric=CC,smooth=1"
+        # registration_param = "step=1,type=imseg,algo=centermassrot,rot_method=pcahog:step=2,type=seg,algo=bsplinesyn,iter=5,slicewise=1,metric=CC,smooth=1:step=3,type=im,algo=syn,iter=5,slicewise=1,metric=CC,smooth=1"
+        assert os.system(f"sct_register_to_template -i {image} -s {sc_mask} -ldisc {disc_levels_only_2} -param {registration_param} -c t2 -ofolder {laterality_folder} -qc {qc_folder}") == 0, "Error running the sct_register_to_template command"
+
+        # Warp atlas to the subject space
+        assert os.system(f"sct_warp_template -d {image} -w {path_template} -ofolder {laterality_folder} -qc {qc_folder}") == 0, "Error running the sct_warp_template command"
 
     # We perform analysis lesion by lesion:
     ## We save one mask per lesion
@@ -717,7 +727,7 @@ def aggregate_subject_report(lesion_statistics, csa_file, csa_file_normalized, a
     return subject_report_csv
 
 
-def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None, min_lesion_size_mm3=15.0):
+def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_data, lesion_mask_input=None, min_lesion_size_mm3=15.0, age_normalization=True):
 
     # Build the output folder
     image_name = input_scan.split("/")[-1].replace(".nii.gz", "")
@@ -748,7 +758,7 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
         return None
 
     # Vert labeling
-    vert_levels =run_vert_labeling(input_scan, output_path, qc_folder)
+    vert_levels = run_vert_labeling(input_scan, output_path, qc_folder)
 
     # For each lesion, we compute its CoM and size
     lesion_statistics = get_lesion_stats(lesion_mask, sc_mask, input_scan, vert_levels, output_path, qc_folder, min_lesion_size_mm3=min_lesion_size_mm3)
@@ -762,10 +772,10 @@ def detect_critical_lesions(input_scan, sex, date_birth, output_path, path_hc_da
     csa_file = compute_csa(input_scan, sc_mask, vert_levels, output_path, qc_folder, pam50_normalization=True)
 
     # Now we plot the CSA compared to the PAM50
-    path_csa_plot, path_csa_plot_normalized, csa_file_normalized_outside_lesion = plot_csa(csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
+    path_csa_plot, path_csa_plot_normalized, csa_file_normalized_outside_lesion = plot_csa(csa_file, sex, age, path_hc_data, lesion_statistics, output_path, age_normalization=age_normalization)
     
     # Plot asymetry with HC group
-    path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, asymetry_csv_normalized_outside_lesion = plot_asymmetry_with_hc(csa_file, sex, age, path_hc_data, lesion_statistics, output_path)
+    path_asymmetry_plot_hc, path_asymmetry_plot_hc_normalized, asymetry_csv_normalized_outside_lesion = plot_asymmetry_with_hc(csa_file, sex, age, path_hc_data, lesion_statistics, output_path, age_normalization=age_normalization)
 
     # Detect laterality
     laterality_report_folder = detect_laterality(input_scan, lesion_mask, sc_mask, vert_levels, lesion_statistics, output_path, qc_folder)
