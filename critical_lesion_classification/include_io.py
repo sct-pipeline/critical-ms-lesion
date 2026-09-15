@@ -203,7 +203,6 @@ def dice_score(prediction, groundtruth, smooth=1.):
     denor = (prediction + groundtruth).sum()
 
     dice = (2 * numer + smooth) / (denor + smooth)
-    print(dice)
     return dice
 
 
