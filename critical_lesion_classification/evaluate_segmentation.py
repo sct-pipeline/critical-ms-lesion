@@ -196,14 +196,13 @@ def main():
     scan_rows, critical_rows, missing_predictions = [], [], []
     for entry in tqdm(entries, desc="Evaluating"):
         _, pred_seg_path = get_pred_paths(entry, args.pred_folder)
-        print(pred_seg_path)
         if not os.path.exists(pred_seg_path):
             missing_predictions.append(entry["scan_id"])
             continue
         scan_row, scan_critical_rows = evaluate_scan(entry, pred_seg_path, args.overlap_ratio)
         scan_rows.append(scan_row)
         critical_rows.extend(scan_critical_rows)
-        break
+        
 
     if missing_predictions:
         logger.warning(f"{len(missing_predictions)} scan(s) have no predicted segmentation and were skipped: {missing_predictions}")
