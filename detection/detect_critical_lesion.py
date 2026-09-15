@@ -573,9 +573,7 @@ def detect_laterality(image, lesion_mask, sc_mask, discs_levels, lesion_statisti
     disc_levels_only_2 = os.path.join(output_path, discs_levels.replace(".nii.gz", "_only_2.nii.gz"))
     assert os.system(f"sct_label_utils -i {discs_levels} -o {disc_levels_only_2} -keep {first_level},{second_level}") == 0, "Error running the sct_label_utils command to keep only vert 3 and 7"
 
-    # Register to template. The registration and the warped atlas only depend on the image and its
-    # SC segmentation, so we skip them when the laterality folder already holds them (e.g. when the
-    # pipeline is run twice on the same scan with two different lesion masks).
+    # Register to template. The registration does not neeed to be done a second time if it was done for a previous lesion
     path_template = os.path.join(laterality_folder, "warp_template2anat.nii.gz")
     path_atlas = os.path.join(laterality_folder, "atlas")
     if not (os.path.exists(path_template) and os.path.isdir(path_atlas)):
