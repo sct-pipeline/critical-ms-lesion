@@ -2,16 +2,11 @@
 Summarizes, across all subjects, the sensitivity of the per-lesion-area CSA AUC to the
 moving-average smoothing window (-s/--smooth_window of compute_lesion_auc.py).
 
-Expects a folder holding the per-subject, per-window AUC csvs produced by compute_lesion_auc.py,
-named "<subject_id>_lesion_auc_smooth<n>.csv" (or "<subject_id>_lesion_auc.csv", read as n=1).
-Every subject must be present at every window. Generate them with, e.g.:
-
-    for n in 1 5 10 20; do
-      for csv in /path/to/*_csa_with_lesions.csv; do
-        sub=$(basename "$csv" _csa_with_lesions.csv)
-        python compute_lesion_auc.py -i "$csv" -o /path/to/auc/${sub}_lesion_auc_smooth${n}.csv -s $n
-      done
-    done
+Expects a folder holding the per-subject CSA csvs (output of compute_csa_on_include.py, one
+"<subject_id>_csa_with_lesions.csv" per subject). This script first computes, for every subject,
+the per-lesion-area AUC at smoothing windows 1, 5, 10 and 20 (via compute_lesion_auc.py), writing
+those per-subject, per-window csvs to <output_dir>/auc_csvs/, then summarizes their sensitivity
+to the window as described below.
 
 The longitudinal metric reported here is the AUC ratio to the BASELINE timepoint (each lesion
 area's first session), recomputed from the per-session AUC values, rather than the ratio to the
@@ -23,11 +18,20 @@ An "observation" is one post-baseline (subject, lesion area, session) triplet. B
 are excluded: their ratio is 1.0 at every window by construction and would dilute the summary.
 
 Outputs (written to -o, default the input folder):
+  - auc_csvs/                   : intermediate per-subject, per-window AUC csvs (compute_lesion_auc.py
+                                  output), one "<subject_id>_lesion_auc_smooth<n>.csv" per (subject, window)
   - sensitivity_long.csv        : one row per observation per window, with baseline ratios,
                                   lesion-area width and the window as a % of that width
-  - sensitivity_table.csv/.tex  : THE supplementary table -- one row per window
+  - sensitivity_table.csv/.txt  : THE supplementary table -- one row per window
   - sensitivity_by_lesion_area.csv : per lesion area, its width and worst deviation, sorted
                                   narrowest first (narrow areas are the sensitive ones)
+  - sensitivity_direction_changes.csv : one row per observation whose SIGN (shrinkage vs. growth,
+                                  ratio crossing 1) is not the same at every window, with the
+                                  ratio to baseline at each window n -- behind n_direction_changed
+  - sensitivity_atrophy_call_changes.csv : one row per observation whose ATROPHY CALL (ratio
+                                  crossing 1 - atrophy_threshold) is not the same at every window
+                                  -- behind n_atrophy_call_changed. A much more sensitive
+                                  criterion than direction: this is usually the non-empty one
   - sensitivity_trajectories.png: small multiple, one panel per lesion area, ratio to baseline
                                   vs. days since baseline, one line per window
   - sensitivity_deviations.png  : pooled strip plot of deviation from the reference window
@@ -46,6 +50,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# Imported after matplotlib.use("Agg") above, since compute_lesion_auc imports plot_subject_csa,
+# which itself imports matplotlib.pyplot -- the backend must already be set to Agg by then.
+from compute_lesion_auc import compute_lesion_auc
+
+SMOOTH_WINDOWS = [1, 5, 10, 20]
 AUC_COLUMNS = ["AUC", "AUC_left", "AUC_right"]
 RATIO_COLUMNS = ["AUC_ratio_to_baseline", "AUC_left_ratio_to_baseline", "AUC_right_ratio_to_baseline"]
 AREA_KEYS = ["subject_id", "lesion_area_id"]
@@ -56,9 +65,11 @@ FILENAME_PATTERN = re.compile(r"^(?P<subject>.+?)_lesion_auc(?:_smooth(?P<window
 def parse_args():
     parser = argparse.ArgumentParser(description="Cross-subject sensitivity of the CSA AUC to the smoothing window.")
     parser.add_argument("-i", "--input_dir", type=str, default=".",
-                        help="Folder holding the per-subject, per-window AUC csvs. Default: current folder.")
+                        help="Folder holding the per-subject CSA csvs, i.e. compute_csa_on_include.py's "
+                             "'<subject_id>_csa_with_lesions.csv'. Default: current folder.")
     parser.add_argument("-o", "--output_dir", type=str, default=None,
-                        help="Folder for the outputs. Default: the input folder.")
+                        help="Folder for the outputs, including the intermediate auc_csvs/ folder. "
+                             "Default: the input folder.")
     parser.add_argument("-r", "--reference_window", type=int, default=10,
                         help="Window the paper reports; all deviations are measured against it. Default 10.")
     parser.add_argument("-t", "--atrophy_threshold", type=float, default=0.05,
@@ -67,6 +78,28 @@ def parse_args():
                              "table counts observations whose call flips relative to the reference window. "
                              "Default 0.05 (5%%). Set to match your primary endpoint.")
     return parser.parse_args()
+
+
+def compute_auc_csvs(input_dir, output_dir):
+    """
+    Runs compute_lesion_auc.py on every "<subject_id>_csa_with_lesions.csv" in input_dir, at each
+    window in SMOOTH_WINDOWS, writing "<subject_id>_lesion_auc_smooth<n>.csv" to
+    <output_dir>/auc_csvs/. Returns that folder's path.
+    """
+    csa_csvs = sorted(glob.glob(os.path.join(input_dir, "*_csa_with_lesions.csv")))
+    if not csa_csvs:
+        raise SystemExit(f"No '*_csa_with_lesions.csv' files found in {input_dir}")
+
+    auc_dir = os.path.join(output_dir, "auc_csvs")
+    os.makedirs(auc_dir, exist_ok=True)
+
+    for csa_csv in csa_csvs:
+        subject_id = os.path.basename(csa_csv).replace("_csa_with_lesions.csv", "")
+        for window in SMOOTH_WINDOWS:
+            output_csv = os.path.join(auc_dir, f"{subject_id}_lesion_auc_smooth{window}.csv")
+            compute_lesion_auc(csa_csv, output_csv, smooth_window=window)
+
+    return auc_dir
 
 
 def load_auc_csvs(input_dir):
@@ -167,7 +200,6 @@ def build_table(df_long, wide, windows, reference_window, atrophy_threshold):
             "smooth_window": window,
             "window_pct_of_median_width": 100 * window / median_width_by_window.loc[window],
             "median_abs_dev_pp": deviation.median(),
-            "p95_abs_dev_pp": deviation.quantile(0.95),
             "max_abs_dev_pp": deviation.max(),
             "n_atrophy_call_changed": int((is_atrophic != is_atrophic_reference).sum()),
             "n_direction_changed": int(((wide[window] < 1) != (reference_ratio < 1)).sum()),
@@ -177,34 +209,69 @@ def build_table(df_long, wide, windows, reference_window, atrophy_threshold):
     df_table = pd.DataFrame(rows)
     # The reference window is trivially identical to itself; blank it out rather than printing zeros.
     is_reference = df_table["smooth_window"] == reference_window
-    df_table.loc[is_reference, ["median_abs_dev_pp", "p95_abs_dev_pp", "max_abs_dev_pp"]] = np.nan
+    df_table.loc[is_reference, ["median_abs_dev_pp", "max_abs_dev_pp"]] = np.nan
     return df_table
 
 
-LATEX_HEADERS = {
-    "smooth_window": r"Window $n$",
-    "window_pct_of_median_width": r"\% of median area width",
-    "median_abs_dev_pp": r"Median $|\Delta|$ (pp)",
-    "p95_abs_dev_pp": r"95th pct (pp)",
-    "max_abs_dev_pp": r"Max (pp)",
+def get_inconsistent_observations(wide, windows, is_flagged):
+    """
+    Lists every post-baseline observation for which is_flagged(ratio to baseline) is not the same
+    at every tested window, with one column per window's ratio to baseline -- so the full picture
+    across all values of n is visible in a single row.
+    """
+    flagged = is_flagged(wide[windows])
+    inconsistent = flagged.nunique(axis=1) > 1
+
+    ratio_columns = {w: f"ratio_to_baseline_n{w}" for w in windows}
+    df_changed = wide.loc[inconsistent, OBSERVATION_KEYS + ["lesion_area_width"] + windows]
+    df_changed = df_changed.rename(columns=ratio_columns)
+
+    return df_changed.sort_values(OBSERVATION_KEYS).reset_index(drop=True)
+
+
+def get_direction_changes(wide, windows):
+    """
+    Observations where the SIGN of change (ratio to baseline below/above 1, i.e. shrinkage vs.
+    growth) is not the same at every window -- the threshold-free notion of "direction", behind
+    the supplementary table's n_direction_changed count.
+    """
+    return get_inconsistent_observations(wide, windows, lambda ratio: ratio < 1)
+
+
+def get_atrophy_call_changes(wide, windows, atrophy_threshold):
+    """
+    Observations where being called "atrophic" (ratio to baseline below 1 - atrophy_threshold) is
+    not the same at every window -- behind the supplementary table's n_atrophy_call_changed count.
+    This is a much more sensitive criterion than get_direction_changes: an observation can cross
+    the atrophy_threshold without its ratio ever crossing 1.
+    """
+    return get_inconsistent_observations(wide, windows, lambda ratio: ratio < (1 - atrophy_threshold))
+
+
+TABLE_HEADERS = {
+    "smooth_window": "Window n",
+    "window_pct_of_median_width": "% of median area width",
+    "median_abs_dev_pp": "Median |delta| (pp)",
+    "max_abs_dev_pp": "Max (pp)",
     "n_atrophy_call_changed": "Atrophy call changed",
     "n_direction_changed": "Direction changed",
-    "spearman_rho_vs_reference": r"Spearman $\rho$",
+    "spearman_rho_vs_reference": "Spearman rho",
 }
 
 
-def write_latex_table(df_table, n_observations, output_tex):
+def write_text_table(df_table, n_observations, output_txt):
     """
-    Paper-ready LaTeX body: readable headers (the csv's snake_case would not compile), and the
-    two count columns rendered as "k/N" so the denominator travels with the number.
+    Paper-ready plain-text table: readable headers, the two count columns rendered as "k/N" so
+    the denominator travels with the number, columns aligned for direct inclusion in a write-up.
     """
-    df_tex = df_table.copy()
+    df_text = df_table.copy()
     for column in ["n_atrophy_call_changed", "n_direction_changed"]:
-        df_tex[column] = df_tex[column].map(lambda k: f"{k}/{n_observations}")
-    df_tex = df_tex.rename(columns=LATEX_HEADERS)
+        df_text[column] = df_text[column].map(lambda k: f"{k}/{n_observations}")
+    df_text = df_text.rename(columns=TABLE_HEADERS)
 
-    with open(output_tex, "w") as f:
-        f.write(df_tex.to_latex(index=False, escape=False, float_format="%.2f", na_rep="--"))
+    with open(output_txt, "w") as f:
+        f.write(df_text.to_string(index=False, float_format=lambda v: f"{v:.2f}", na_rep="--"))
+        f.write("\n")
 
 
 def build_by_lesion_area(wide, windows, reference_window):
@@ -284,11 +351,14 @@ def main():
     output_dir = os.path.abspath(args.output_dir or input_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    df_long = add_baseline_ratios(load_auc_csvs(input_dir))
+    auc_dir = compute_auc_csvs(input_dir, output_dir)
+    df_long = add_baseline_ratios(load_auc_csvs(auc_dir))
     wide, windows = get_deviations(df_long, args.reference_window, "AUC_ratio_to_baseline")
 
     df_table = build_table(df_long, wide, windows, args.reference_window, args.atrophy_threshold)
     df_area = build_by_lesion_area(wide, windows, args.reference_window)
+    df_direction_changes = get_direction_changes(wide, windows)
+    df_atrophy_call_changes = get_atrophy_call_changes(wide, windows, args.atrophy_threshold)
 
     # Signal-to-sensitivity: the observed atrophy the study reports, against the largest shift any
     # alternative window could have produced. This is the number that decides whether the
@@ -305,7 +375,9 @@ def main():
     df_long.to_csv(os.path.join(output_dir, "sensitivity_long.csv"), index=False)
     df_table.to_csv(os.path.join(output_dir, "sensitivity_table.csv"), index=False)
     df_area.to_csv(os.path.join(output_dir, "sensitivity_by_lesion_area.csv"), index=False)
-    write_latex_table(df_table, len(wide), os.path.join(output_dir, "sensitivity_table.tex"))
+    df_direction_changes.to_csv(os.path.join(output_dir, "sensitivity_direction_changes.csv"), index=False)
+    df_atrophy_call_changes.to_csv(os.path.join(output_dir, "sensitivity_atrophy_call_changes.csv"), index=False)
+    write_text_table(df_table, len(wide), os.path.join(output_dir, "sensitivity_table.txt"))
 
     plot_trajectories(df_long, windows, os.path.join(output_dir, "sensitivity_trajectories.png"))
     plot_deviations(wide, windows, args.reference_window, os.path.join(output_dir, "sensitivity_deviations.png"))
@@ -320,6 +392,16 @@ def main():
     print(df_table.to_string(index=False, float_format=lambda v: f"{v:.3f}", na_rep="--"))
     print(f"\nPer lesion area, narrowest first:")
     print(df_area.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    if df_direction_changes.empty:
+        print(f"\nNo observations changed SIGN (shrinkage vs. growth, ratio crossing 1) across windows {windows}.")
+    else:
+        print(f"\nObservations whose SIGN (shrinkage vs. growth, ratio crossing 1) is not consistent across windows {windows}:")
+        print(df_direction_changes.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
+    if df_atrophy_call_changes.empty:
+        print(f"\nNo observations changed ATROPHY CALL (ratio crossing 1 - {100 * args.atrophy_threshold:.0f}%) across windows {windows}.")
+    else:
+        print(f"\nObservations whose ATROPHY CALL (ratio crossing 1 - {100 * args.atrophy_threshold:.0f}%) is not consistent across windows {windows}:")
+        print(df_atrophy_call_changes.to_string(index=False, float_format=lambda v: f"{v:.3f}"))
     print(f"\nMean observed atrophy at n={args.reference_window}: {mean_atrophy_pp:.2f} pp")
     print(f"Largest deviation from any alternative window: {max_deviation_pp:.2f} pp")
     print(f"Signal-to-sensitivity ratio: {mean_atrophy_pp / max_deviation_pp:.1f}x")
