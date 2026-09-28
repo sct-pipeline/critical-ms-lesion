@@ -38,3 +38,7 @@ These are called internally by `compute_csa_on_include.py`, but can also be run 
 - **`plot_native_and_pam50_csa.py`** — plots CSA vs. slice for a single scan in both PAM50 and
   native slice space, stacked in one figure, from a pair of `sct_process_segmentation` csvs
   (`--csa_native` / `--csa_pam50`).
+- **`sensitivity_analysis.py`** — given a folder of per-subject CSA csvs, runs
+  `compute_lesion_auc.py` at smoothing windows 1/5/10/20 for every subject, then summarizes
+  across the cohort how sensitive the baseline-referenced AUC ratio is to that window choice
+  (supplementary table + per-lesion-area breakdown + trajectory/deviation plots).
