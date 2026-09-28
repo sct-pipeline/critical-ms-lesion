@@ -53,7 +53,8 @@ METADATA_COLUMNS = [
     "lesion_label",
     "critical_lesion_label",
     "critical_voxel_fraction",
-    "overlap_fraction",
+    "overlap_fraction_critical",
+    "overlap_fraction_any",
     "matched",
 ]
 

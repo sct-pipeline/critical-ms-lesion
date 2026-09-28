@@ -15,6 +15,8 @@ Two evaluations are reported:
 Outputs, in the output folder:
     scanwise_metrics.csv          one row per scan (evaluation 1)
     critical_lesions.csv          one row per critical lesion (evaluation 2)
+    missed_critical_lesions/      one mask per critical lesion that was not detected, holding that
+                                  lesion alone, to review why it was missed
     evaluate_segmentation.log     full report
 
 Input:
@@ -40,7 +42,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from include_io import (load_include, check_entries_exist, get_pred_paths, CRITICAL_VALUE,
-                        dice_score, lesion_f1_score, lesion_ppv, lesion_sensitivity)
+                        dice_score, lesion_wise_tp_fp_fn, lesion_f1_score, lesion_ppv, lesion_sensitivity)
 
 
 # 26-connectivity, same structure as detection/detect_critical_lesion.py get_lesion_stats
@@ -60,10 +62,10 @@ def load_mask(mask_path):
     """
     Load a segmentation mask.
     Output:
-        (data, voxel_volume_mm3)
+        (nii, data, voxel_volume_mm3)
     """
     nii = nib.load(mask_path)
-    return nii.get_fdata(), float(np.prod(nii.header.get_zooms()[:3]))
+    return nii, nii.get_fdata(), float(np.prod(nii.header.get_zooms()[:3]))
 
 
 def get_overlapping_components(labeled, lesion_mask, overlap_ratio):
@@ -96,7 +98,7 @@ def intersection_over_union(mask_a, mask_b):
     return float(np.sum(np.logical_and(mask_a, mask_b)) / union)
 
 
-def evaluate_scan(entry, pred_seg_path, overlap_ratio):
+def evaluate_scan(entry, pred_seg_path, overlap_ratio, missed_folder):
     """
     Compare the manual and the predicted lesion segmentations of one scan.
     Input:
@@ -104,12 +106,14 @@ def evaluate_scan(entry, pred_seg_path, overlap_ratio):
         pred_seg_path: path to the predicted lesion segmentation
         overlap_ratio: minimum fraction of a predicted component falling inside a critical lesion to
             attribute it to that lesion, and minimum IoU for that lesion to count as detected
+        missed_folder: folder where every critical lesion that was not detected is saved, alone in
+            a mask of its own
     Output:
         (scan_row, critical_rows): the per-scan scores of evaluation 1, and one row per critical
         lesion for evaluation 2
     """
-    manual_data, voxel_volume = load_mask(entry["label"])
-    pred_data, _ = load_mask(pred_seg_path)
+    manual_nii, manual_data, voxel_volume = load_mask(entry["label"])
+    _, pred_data, _ = load_mask(pred_seg_path)
     if manual_data.shape != pred_data.shape:
         raise ValueError(
             f"Manual and predicted segmentations do not have the same shape: "
@@ -122,6 +126,9 @@ def evaluate_scan(entry, pred_seg_path, overlap_ratio):
     _, n_manual_lesions = ndimage.label(manual_binary, structure=CONNECTIVITY_STRUCTURE)
 
     # ------------------------------------------- evaluation 1: critical and non-critical together
+    # Lesions found, missed and predicted spuriously, to be summed over the cohort
+    true_positives, false_positives, false_negatives = lesion_wise_tp_fp_fn(manual_binary, pred_binary, overlap_ratio)
+
     scan_row = {
         "subject": entry["subject"],
         "session": entry["session"],
@@ -134,6 +141,9 @@ def evaluate_scan(entry, pred_seg_path, overlap_ratio):
         "lesion_f1": lesion_f1_score(manual_binary, pred_binary, overlap_ratio),
         "lesion_ppv": lesion_ppv(manual_binary, pred_binary, overlap_ratio),
         "lesion_sensitivity": lesion_sensitivity(manual_binary, pred_binary, overlap_ratio),
+        "tp": true_positives,
+        "fp": false_positives,
+        "fn": false_negatives,
         "manual_volume_mm3": float(np.sum(manual_binary) * voxel_volume),
         "pred_volume_mm3": float(np.sum(pred_binary) * voxel_volume),
         "n_manual_lesions": int(n_manual_lesions),
@@ -154,6 +164,14 @@ def evaluate_scan(entry, pred_seg_path, overlap_ratio):
         pred_lesion_mask = np.isin(labeled_pred, kept_labels)
 
         lesion_iou = intersection_over_union(lesion_mask, pred_lesion_mask)
+        detected = lesion_iou > overlap_ratio
+
+        # A lesion the model missed is saved alone in a mask, to review it against the scan
+        missed_mask_file = ""
+        if not detected:
+            missed_mask_file = os.path.join(missed_folder, f"{entry['scan_id']}_critical-lesion-{label}.nii.gz")
+            nib.save(nib.Nifti1Image(lesion_mask.astype(np.uint8), manual_nii.affine, manual_nii.header), missed_mask_file)
+
         critical_rows.append({
             "subject": entry["subject"],
             "session": entry["session"],
@@ -163,9 +181,10 @@ def evaluate_scan(entry, pred_seg_path, overlap_ratio):
             "n_pred_components": len(kept_labels),
             "pred_volume_mm3": float(np.sum(pred_lesion_mask) * voxel_volume),
             "iou": lesion_iou,
-            "detected": lesion_iou > overlap_ratio,
+            "detected": detected,
             # Cast to uint8 here too: both masks are boolean, and they are added inside dice_score
             "dice": dice_score(pred_lesion_mask.astype(np.uint8), lesion_mask.astype(np.uint8)),
+            "missed_mask_file": missed_mask_file,
         })
 
     return scan_row, critical_rows
@@ -183,6 +202,8 @@ def main():
     args = parse_args()
     output_folder = os.path.abspath(args.output_folder)
     os.makedirs(output_folder, exist_ok=True)
+    missed_folder = os.path.join(output_folder, "missed_critical_lesions")
+    os.makedirs(missed_folder, exist_ok=True)
 
     # Initialize a logger in the output folder
     path_logger = os.path.join(output_folder, "evaluate_segmentation.log")
@@ -199,10 +220,9 @@ def main():
         if not os.path.exists(pred_seg_path):
             missing_predictions.append(entry["scan_id"])
             continue
-        scan_row, scan_critical_rows = evaluate_scan(entry, pred_seg_path, args.overlap_ratio)
+        scan_row, scan_critical_rows = evaluate_scan(entry, pred_seg_path, args.overlap_ratio, missed_folder)
         scan_rows.append(scan_row)
         critical_rows.extend(scan_critical_rows)
-        
 
     if missing_predictions:
         logger.warning(f"{len(missing_predictions)} scan(s) have no predicted segmentation and were skipped: {missing_predictions}")
@@ -225,9 +245,22 @@ def main():
     for column, label in [("dice", "Dice"), ("lesion_f1", "Lesion-wise F1"),
                           ("lesion_ppv", "Lesion-wise PPV"), ("lesion_sensitivity", "Lesion-wise sensitivity")]:
         segmentation_table.add_row([label, format_mean_std(df_scans[column])])
-    segmentation_table.add_row(["Manual volume (mm3)", format_mean_std(df_scans["manual_volume_mm3"])])
-    segmentation_table.add_row(["Predicted volume (mm3)", format_mean_std(df_scans["pred_volume_mm3"])])
+    segmentation_table.add_row(["Total manual volume per scan (mm3)", format_mean_std(df_scans["manual_volume_mm3"])])
+    segmentation_table.add_row(["Total predicted volume per scan (mm3)", format_mean_std(df_scans["pred_volume_mm3"])])
     logger.info(f"All lesions (critical and non-critical), averaged over the {len(df_scans)} scans:\n{segmentation_table}")
+
+    # Same detection, but counted over the whole cohort, where every lesion weighs the same (the
+    # per-scan scores above give a scan with one lesion as much weight as a scan with four)
+    n_tp, n_fp, n_fn = (int(df_scans[column].sum()) for column in ("tp", "fp", "fn"))
+    f1_denominator = n_tp + (n_fp + n_fn) / 2
+    pooled_table = prettytable.PrettyTable(["Metric", "Value"])
+    pooled_table.add_row(["Lesions found (TP)", n_tp])
+    pooled_table.add_row(["Lesions missed (FN)", n_fn])
+    pooled_table.add_row(["Spurious lesions (FP)", n_fp])
+    pooled_table.add_row(["Sensitivity", f"{n_tp / (n_tp + n_fn):.3f}" if (n_tp + n_fn) else "n/a"])
+    pooled_table.add_row(["PPV", f"{n_tp / (n_tp + n_fp):.3f}" if (n_tp + n_fp) else "n/a"])
+    pooled_table.add_row(["F1", f"{n_tp / f1_denominator:.3f}" if f1_denominator else "n/a"])
+    logger.info(f"All lesions, pooled over the {len(df_scans)} scans:\n{pooled_table}")
 
     # ------------------------------------------------------------ evaluation 2: critical lesions
     if df_critical.empty:
@@ -240,9 +273,10 @@ def main():
         critical_table.add_row(["IoU, all lesions", format_mean_std(df_critical["iou"])])
         critical_table.add_row(["Dice, all lesions", format_mean_std(df_critical["dice"])])
         critical_table.add_row(["Dice, detected lesions", format_mean_std(df_critical.loc[df_critical["detected"], "dice"])])
-        critical_table.add_row(["Manual volume (mm3)", format_mean_std(df_critical["volume_mm3"])])
-        critical_table.add_row(["Predicted volume (mm3)", format_mean_std(df_critical["pred_volume_mm3"])])
+        critical_table.add_row(["Manual volume per lesion (mm3)", format_mean_std(df_critical["volume_mm3"])])
+        critical_table.add_row(["Predicted volume per lesion (mm3)", format_mean_std(df_critical["pred_volume_mm3"])])
         logger.info(f"Critical lesions only:\n{critical_table}")
+        logger.info(f"Masks of the {len(df_critical) - n_detected} missed critical lesions saved to: {missed_folder}")
 
     df_scans.to_csv(os.path.join(output_folder, "scanwise_metrics.csv"), index=False)
     df_critical.to_csv(os.path.join(output_folder, "critical_lesions.csv"), index=False)
