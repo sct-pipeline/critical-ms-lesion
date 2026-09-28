@@ -1,14 +1,18 @@
 """
-Step 1 of the critical lesion classification study: segment the spinal cord and the MS lesions of
-every scan listed in the include yml file, with the SCT lesion_ms model.
+Step 1 of the critical lesion classification study: segment the spinal cord, the intervertebral
+discs and the MS lesions of every scan listed in the include yml file, with SCT.
 
 The predicted segmentations mirror the relative path of each scan inside the dataset:
     <output_folder>/sub-001/ses-20150604/anat/sub-001_ses-20150604_acq-axCerv_T2w_label-SC_seg.nii.gz
+    <output_folder>/sub-001/ses-20150604/anat/sub-001_ses-20150604_acq-axCerv_T2w_label-discs_dlabel.nii.gz
     <output_folder>/sub-001/ses-20150604/anat/sub-001_ses-20150604_acq-axCerv_T2w_label-lesion_seg.nii.gz
 
-A QC report of the lesion segmentation overlaid on the spinal cord segmentation is generated in
-<output_folder>/QC, and a summary csv listing every scan with its segmentations is written to
-<output_folder>/predicted_segmentations.csv.
+The disc labelling reuses run_vert_labeling from detection/detect_critical_lesion.py, so it follows
+the same naming convention as the feature pipeline.
+
+A QC report of the lesion segmentation overlaid on the spinal cord segmentation, and of the disc
+labelling, is generated in <output_folder>/QC. A summary csv listing every scan with its
+segmentations is written to <output_folder>/predicted_segmentations.csv.
 
 Input:
     -i / --include: path to the include yml file
@@ -26,23 +30,26 @@ from tqdm import tqdm
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
 from include_io import load_include, get_pred_paths
+from detect_critical_lesion import run_vert_labeling
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Segment the spinal cord and the MS lesions of every scan of the include yml file with the SCT lesion_ms model.")
+    parser = argparse.ArgumentParser(description="Segment the spinal cord, the intervertebral discs and the MS lesions of every scan of the include yml file with SCT.")
     parser.add_argument("-i", "--include", type=str, required=True, help="Path to the include yml file.")
     parser.add_argument("-o", "--output_folder", type=str, required=True, help="Path to the output folder where the predicted segmentations will be saved.")
     parser.add_argument("--overwrite", action="store_true", help="Recompute the segmentations even if they already exist.")
     return parser.parse_args()
 
 
-def segment_scan(image, sc_seg, lesion_seg, qc_folder, overwrite=False):
+def segment_scan(image, sc_seg, discs_seg, lesion_seg, qc_folder, overwrite=False):
     """
-    Segment the spinal cord and the MS lesions of one scan.
+    Segment the spinal cord, the intervertebral discs and the MS lesions of one scan.
     Input:
         image: path to the MRI scan (NIfTI format)
         sc_seg: path where the spinal cord segmentation will be saved
+        discs_seg: path where the disc labelling will be saved
         lesion_seg: path where the lesion segmentation will be saved
         qc_folder: path to the QC folder
         overwrite: whether to recompute the segmentations even if they already exist
@@ -61,6 +68,12 @@ def segment_scan(image, sc_seg, lesion_seg, qc_folder, overwrite=False):
             f"SCT_USE_GPU=1 sct_deepseg lesion_ms -i {image} -o {lesion_seg} -test-time-aug -qc {qc_folder} -qc-seg {sc_seg} -qc-plane Axial"
         ) == 0, "Error running the lesion segmentation model"
 
+    # run_vert_labeling returns early when the disc labelling is already there, so it is removed
+    # first when the segmentations are being recomputed
+    if overwrite and os.path.exists(discs_seg):
+        os.remove(discs_seg)
+    run_vert_labeling(image, os.path.dirname(discs_seg), qc_folder)
+
 
 def main():
     args = parse_args()
@@ -77,8 +90,9 @@ def main():
     failed_scans = []
     for entry in tqdm(entry_list, desc="Segmenting lesions"):
         sc_seg, lesion_seg = get_pred_paths(entry, output_folder)
+        discs_seg = os.path.join(os.path.dirname(sc_seg), entry["scan_id"] + "_label-discs_dlabel.nii.gz")
         try:
-            segment_scan(entry["image"], sc_seg, lesion_seg, qc_folder, overwrite=args.overwrite)
+            segment_scan(entry["image"], sc_seg, discs_seg, lesion_seg, qc_folder, overwrite=args.overwrite)
         except Exception as error:
             print(f"Error segmenting {entry['image']}: {error}")
             traceback.print_exc()
@@ -92,6 +106,7 @@ def main():
             "scan_file": entry["image"],
             "manual_seg_file": entry["label"],
             "pred_sc_seg_file": sc_seg,
+            "pred_discs_file": discs_seg,
             "pred_seg_file": lesion_seg,
         })
 
