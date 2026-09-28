@@ -235,13 +235,16 @@ def label_lesions(manual_seg_path, pred_seg_path, min_size_mm3, overlap_ratio):
     for label in pred_lesion_labels:
         component_mask = labeled_pred == label
         n_voxels = int(np.sum(component_mask))
-        overlap_fraction = float(np.sum(np.logical_and(component_mask, critical_mask)) / n_voxels)
+        # Fraction of the predicted lesion falling on the critical voxels of the manual segmentation,
+        # and fraction falling on any of its lesions, critical or not
+        overlap_fraction_critical = float(np.sum(np.logical_and(component_mask, critical_mask)) / n_voxels)
+        overlap_fraction_any = float(np.sum(np.logical_and(component_mask, labeled_manual > 0)) / n_voxels)
         pred_labels[label] = {
-            "is_critical": bool(overlap_fraction >= overlap_ratio),
-            "overlap_fraction": overlap_fraction,
-            # Whether the predicted lesion overlaps any manual lesion at all: the ones that do not
-            # are the false positives of the segmentation model
-            "matched": bool(np.any(np.logical_and(component_mask, labeled_manual > 0))),
+            "is_critical": bool(overlap_fraction_critical >= overlap_ratio),
+            "overlap_fraction_critical": overlap_fraction_critical,
+            "overlap_fraction_any": overlap_fraction_any,
+            # A predicted lesion overlapping no manual lesion at all is a false positive of the model
+            "matched": bool(overlap_fraction_any > 0),
         }
 
     return manual_labels, pred_labels
@@ -289,8 +292,11 @@ def add_pred_labels(df_features, entry, pred_seg_path, pred_labels):
     df_features["critical_lesion_label"] = df_features["lesion_label"].map(
         lambda label: int(pred_labels.get(label, {}).get("is_critical", False))
     )
-    df_features["overlap_fraction"] = df_features["lesion_label"].map(
-        lambda label: pred_labels.get(label, {}).get("overlap_fraction", np.nan)
+    df_features["overlap_fraction_critical"] = df_features["lesion_label"].map(
+        lambda label: pred_labels.get(label, {}).get("overlap_fraction_critical", np.nan)
+    )
+    df_features["overlap_fraction_any"] = df_features["lesion_label"].map(
+        lambda label: pred_labels.get(label, {}).get("overlap_fraction_any", np.nan)
     )
     df_features["matched"] = df_features["lesion_label"].map(
         lambda label: bool(pred_labels.get(label, {}).get("matched", False))
@@ -369,8 +375,6 @@ def main():
                 "scan_file": entry["image"],
                 "error": str(error),
             })
-
-        break
 
     # Save the feature tables
     if not df_manual_features.empty:
