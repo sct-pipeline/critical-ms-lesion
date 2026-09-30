@@ -10,11 +10,16 @@ Two evaluations are reported:
        2). For each connected component of that mask, the predicted components of which at least
        --overlap-ratio of the voxels fall inside the lesion are kept and merged; the lesion counts
        as detected when the IoU between it and those predicted components is above --overlap-ratio,
-       and the Dice of that pair is reported.
+       and the Dice of that pair is reported. How the prediction relates to each critical lesion is
+       reported too: one-to-one, split over several predicted components, merged with another
+       critical lesion into a single predicted component, or missed. Those relations are what make
+       the number of critical lesions of the predicted masks differ from the manual one, and hence
+       the two arms of train_xgboost.py differ in their number of critical lesions.
 
 Outputs, in the output folder:
     scanwise_metrics.csv          one row per scan (evaluation 1)
-    critical_lesions.csv          one row per critical lesion (evaluation 2)
+    critical_lesions.csv          one row per critical lesion (evaluation 2), with the predicted
+                                  components attributed to it and their relation to it
     missed_critical_lesions/      one mask per critical lesion that was not detected, holding that
                                   lesion alone, to review why it was missed
     evaluate_segmentation.log     full report
@@ -32,6 +37,7 @@ Author: Pierre-Louis Benveniste
 import os
 import sys
 import argparse
+from collections import Counter
 
 import numpy as np
 import nibabel as nib
@@ -47,6 +53,8 @@ from include_io import (load_include, check_entries_exist, get_pred_paths, CRITI
 
 # 26-connectivity, same structure as detection/detect_critical_lesion.py get_lesion_stats
 CONNECTIVITY_STRUCTURE = ndimage.generate_binary_structure(3, 3)
+# How the predicted components can relate to a critical lesion, in the order they are reported
+RELATIONS = ["one-to-one", "split", "merged", "missed"]
 
 
 def parse_args():
@@ -96,6 +104,31 @@ def intersection_over_union(mask_a, mask_b):
     if union == 0:
         return 0.0
     return float(np.sum(np.logical_and(mask_a, mask_b)) / union)
+
+
+def describe_relations(critical_rows):
+    """
+    How the prediction relates to each critical lesion of one scan: missed when the lesion was not
+    detected, merged when it shares a predicted component with another critical lesion, split when
+    several components were attributed to it, and one-to-one otherwise. Merged takes precedence over
+    split, since two critical lesions then collapse into a single predicted lesion.
+    A split adds a critical lesion to the predicted masks, a merge or a miss removes one, which is
+    why the predicted and the manual masks do not hold the same number of critical lesions.
+    Input:
+        critical_rows: the rows of one scan, each holding "detected" and "pred_components"
+    Output:
+        None, a "relation" key is added to every row
+    """
+    component_counts = Counter(component for row in critical_rows for component in row["pred_components"])
+    for row in critical_rows:
+        if not row["detected"]:
+            row["relation"] = "missed"
+        elif any(component_counts[component] > 1 for component in row["pred_components"]):
+            row["relation"] = "merged"
+        elif len(row["pred_components"]) > 1:
+            row["relation"] = "split"
+        else:
+            row["relation"] = "one-to-one"
 
 
 def evaluate_scan(entry, pred_seg_path, overlap_ratio, missed_folder):
@@ -179,6 +212,7 @@ def evaluate_scan(entry, pred_seg_path, overlap_ratio, missed_folder):
             "lesion_label": label,
             "volume_mm3": float(np.sum(lesion_mask) * voxel_volume),
             "n_pred_components": len(kept_labels),
+            "pred_components": kept_labels,
             "pred_volume_mm3": float(np.sum(pred_lesion_mask) * voxel_volume),
             "iou": lesion_iou,
             "detected": detected,
@@ -187,7 +221,23 @@ def evaluate_scan(entry, pred_seg_path, overlap_ratio, missed_folder):
             "missed_mask_file": missed_mask_file,
         })
 
+    # Relations need every lesion of the scan, so they are added once the loop is over
+    describe_relations(critical_rows)
+    for row in critical_rows:
+        row["pred_components"] = ";".join(str(component) for component in row["pred_components"])
+
     return scan_row, critical_rows
+
+
+def count_attributed_components(df_critical):
+    """
+    Number of distinct predicted components attributed to the critical lesions over the cohort: the
+    number of critical lesions the classifier sees on the predicted masks, which splits push above
+    the manual count and merges and misses push below it.
+    """
+    return int(df_critical.groupby("scan_id")["pred_components"].apply(
+        lambda components: len({component for value in components for component in value.split(";") if component})
+    ).sum())
 
 
 def format_mean_std(values):
@@ -231,6 +281,14 @@ def main():
 
     df_scans = pd.DataFrame(scan_rows)
     df_critical = pd.DataFrame(critical_rows)
+
+    # The relation and the components attributed to a lesion come right after its identity, since
+    # they are what one reads first when looking up a lesion in the csv
+    leading_columns = ["subject", "session", "scan_id", "lesion_label", "relation", "pred_components"]
+    if not df_critical.empty:
+        df_critical = df_critical[
+            leading_columns + [column for column in df_critical.columns if column not in leading_columns]
+        ]
 
     logger.info(f"Scans evaluated: {len(df_scans)} from {df_scans['subject'].nunique()} subjects")
     logger.info(
@@ -277,6 +335,27 @@ def main():
         critical_table.add_row(["Predicted volume per lesion (mm3)", format_mean_std(df_critical["pred_volume_mm3"])])
         logger.info(f"Critical lesions only:\n{critical_table}")
         logger.info(f"Masks of the {len(df_critical) - n_detected} missed critical lesions saved to: {missed_folder}")
+
+        # How the predicted components relate to each critical lesion, which explains why the
+        # predicted masks do not hold the same number of critical lesions as the manual ones
+        relation_table = prettytable.PrettyTable(["Relation to the predicted components", "Critical lesions"])
+        for relation in RELATIONS:
+            n_relation = int((df_critical["relation"] == relation).sum())
+            relation_table.add_row([relation, f"{n_relation} ({n_relation / len(df_critical):.1%})"])
+        logger.info(f"How the prediction relates to each critical lesion:\n{relation_table}")
+        logger.info(
+            f"The {len(df_critical)} critical lesions of the manual masks are covered by "
+            f"{count_attributed_components(df_critical)} predicted component(s): that is how many critical "
+            "lesions the classifier sees on the predicted masks, splits adding to that count, merges and "
+            "misses removing from it"
+        )
+        for relation in ("split", "merged"):
+            df_relation = df_critical[df_critical["relation"] == relation]
+            if not df_relation.empty:
+                logger.info(
+                    f"Critical lesions {relation}:\n"
+                    f"{df_relation[['scan_id', 'lesion_label', 'volume_mm3', 'pred_components', 'iou', 'dice']].to_string(index=False)}"
+                )
 
     df_scans.to_csv(os.path.join(output_folder, "scanwise_metrics.csv"), index=False)
     df_critical.to_csv(os.path.join(output_folder, "critical_lesions.csv"), index=False)
