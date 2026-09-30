@@ -44,7 +44,10 @@ Outputs, in the output folder:
     patient_level.csv             patient-level performance of every arm and model
     end_to_end.csv                end-to-end sensitivity of every auto model (--critical-lesions)
     predictions.csv               per-lesion out-of-fold probability, for error analysis
-    roc_pr_calibration.png        curves of the best model of each arm and of its top-features run
+    roc_pr_calibration_all_features.png       ROC, precision-recall and calibration curves of every
+                                              run on the full feature set
+    roc_pr_calibration_top_<n>_features.png   the same three curves for the top-features runs, kept
+                                              apart since they are not comparable to the full ones
     top_features_<arm>_<model>.csv         features of the final model, ranked
     shap_beeswarm_<arm>_<model>.png        SHAP summary plot (tree models only)
     shap_bar_<arm>_<model>.png             mean absolute SHAP value of the top features (tree models)
@@ -454,7 +457,6 @@ def main():
     logger.info(f"Best model of each arm, by mean F1: {best_models}")
 
     # ------- pass 2: final model of each arm, then the same nested CV on its top features alone
-    plot_runs = []
     for arm, model_name in best_models.items():
         logger.info(f"Fitting the final {arm} / {model_name} model on all its lesions...")
         X, y = get_xy(tables[arm], feature_columns)
@@ -471,7 +473,6 @@ def main():
         )
         fold_rows += rows
         predictions += preds
-        plot_runs += [(arm, model_name), (arm, top_model_name)]
 
     # ----------------------------------------------------------------------------- reporting
     df_folds = pd.DataFrame(fold_rows)
@@ -481,11 +482,15 @@ def main():
     summarise(df_folds).to_csv(os.path.join(args.output_folder, "results_summary.csv"))
     logger.info(f"Lesion level, every run:\n{format_summary(df_folds).to_string()}")
 
-    # Curves of the best model of each arm and of its top-features run
-    plot_curves(
-        df_predictions.merge(pd.DataFrame(plot_runs, columns=["arm", "model"]), on=["arm", "model"]),
-        os.path.join(args.output_folder, "roc_pr_calibration.png"),
-    )
+    # Curves of every run, in two figures: a top-features run is not comparable to a full-feature one,
+    # since its features were ranked with the labels of every subject
+    is_top_features = df_predictions["model"].str.endswith(f"(top {args.n_top_features})")
+    for df_subset, filename in [
+        (df_predictions[~is_top_features], "roc_pr_calibration_all_features.png"),
+        (df_predictions[is_top_features], f"roc_pr_calibration_top_{args.n_top_features}_features.png"),
+    ]:
+        if not df_subset.empty:
+            plot_curves(df_subset, os.path.join(args.output_folder, filename))
 
     # Patient level: is the highest-scoring lesion of a patient one of its critical lesions. The
     # patients counted are those holding a critical lesion in the manual segmentation, in every run.
