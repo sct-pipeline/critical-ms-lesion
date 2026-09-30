@@ -10,14 +10,17 @@ The feature pipeline of detection/detect_critical_lesion.py is run twice per sca
       inference time, and whose lesions are labelled critical when at least --overlap-ratio of
       their voxels fall inside a critical manual lesion (the rule of evaluate_segmentation.py)
 
-Everything that only depends on the image (spinal cord segmentation, vertebral labelling, PAM50
-CSA, registration to the template and warped atlas) is computed once and shared between the two
-runs, so only the lesion-dependent steps are computed twice.
+The spinal cord segmentation and the disc labelling are reused from the prediction folder whenever
+segment_lesions.py already wrote them, instead of being computed again. The remaining image-level
+products (PAM50 CSA, registration to the template and warped atlas) are computed on the manual run
+and shared with the predicted run, so only the lesion-dependent steps are computed twice.
 
 Outputs, in the output folder:
     features_manual.csv   one row per manual lesion, with its features and its ground-truth label
     features_pred.csv     one row per predicted lesion, with its features and its inherited label
-    failed_scans.csv      scans whose feature extraction failed, with the error
+    excluded_scans.csv    scans that have no lesion row in a feature csv, with the mask source
+                          concerned and the reason (no lesion above the size threshold, or an error)
+    command.txt           the command that produced this folder, appended at every run
     manual/ and pred/     the per-scan working folders of the feature pipeline (plots, QC, csvs)
 
 Input:
@@ -39,8 +42,10 @@ Author: Pierre-Louis Benveniste
 """
 import os
 import sys
+import shlex
 import argparse
 import traceback
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -145,7 +150,31 @@ def share_image_level_outputs(source_folder, target_folder, scan_id):
             pd.read_csv(source).to_csv(target, index=False)
 
 
-def run_feature_pipeline(entry, lesion_mask, mask_source, sex, date_birth, output_folder, path_hc_data, min_lesion_size, age_normalization=True):
+def link_predicted_segmentations(entry, pred_folder, scan_folder):
+    """
+    Symlink the spinal cord segmentation and the disc labelling already computed by
+    segment_lesions.py into a per-scan folder of the feature pipeline. run_sc_segmentation and
+    run_vert_labeling both return early when their output is already there, so this is what keeps
+    them from running a second time. Neither file is ever written to by the pipeline, only read.
+    Missing files are simply skipped, and the pipeline computes them as before.
+    Input:
+        entry: one entry of the include file (output of load_include)
+        pred_folder: folder holding the predicted segmentations (output of segment_lesions.py)
+        scan_folder: per-scan folder of the feature pipeline
+    Output:
+        None
+    """
+    sc_seg, _ = get_pred_paths(entry, pred_folder)
+    discs_seg = os.path.join(os.path.dirname(sc_seg), entry["scan_id"] + "_label-discs_dlabel.nii.gz")
+
+    os.makedirs(scan_folder, exist_ok=True)
+    for source in (sc_seg, discs_seg, discs_seg.replace(".nii.gz", ".json")):
+        target = os.path.join(scan_folder, os.path.basename(source))
+        if os.path.exists(source) and not os.path.exists(target):
+            os.symlink(source, target)
+
+
+def run_feature_pipeline(entry, lesion_mask, mask_source, sex, date_birth, output_folder, pred_folder, path_hc_data, min_lesion_size, age_normalization=True):
     """
     Run the feature pipeline of detect_critical_lesion.py on one scan with one lesion mask.
     Input:
@@ -154,6 +183,8 @@ def run_feature_pipeline(entry, lesion_mask, mask_source, sex, date_birth, outpu
         mask_source: "manual" or "pred", used to pick the working folder
         sex / date_birth: demographics of the subject
         output_folder: root output folder of the study
+        pred_folder: folder holding the predicted segmentations, whose spinal cord segmentation and
+            disc labelling are reused instead of being recomputed
         path_hc_data: path to the healthy control data folder
         min_lesion_size: minimum lesion size (mm3) to keep a lesion
         age_normalization: whether to compare the subject only to the healthy controls of its
@@ -166,6 +197,9 @@ def run_feature_pipeline(entry, lesion_mask, mask_source, sex, date_birth, outpu
     os.makedirs(mask_source_folder, exist_ok=True)
     # detect_critical_lesions appends the scan name to the output folder it is given
     scan_folder = os.path.join(mask_source_folder, entry["scan_id"])
+
+    # Reuse the spinal cord segmentation and the disc labelling of the prediction folder
+    link_predicted_segmentations(entry, pred_folder, scan_folder)
 
     report_csv = detect_critical_lesions(
         entry["image"], sex, date_birth, mask_source_folder, path_hc_data,
@@ -304,10 +338,53 @@ def add_pred_labels(df_features, entry, pred_seg_path, pred_labels):
     return df_features
 
 
+def exclusion_row(entry, mask_source, reason):
+    """
+    One row of excluded_scans.csv: a scan that ends up with no lesion in one of the feature tables.
+    Input:
+        entry: one entry of the include file (output of load_include)
+        mask_source: "manual", "pred", or "both" when neither could be processed
+        reason: why that scan has no lesion row
+    Output:
+        A dict, one row of the csv
+    """
+    return {
+        "subject": entry["subject"],
+        "session": entry["session"],
+        "scan_id": entry["scan_id"],
+        "scan_file": entry["image"],
+        "mask_source": mask_source,
+        "reason": reason,
+    }
+
+
+def describe_exclusion(mask_path, min_lesion_size):
+    """
+    Why a lesion mask yielded no feature row: either it holds no lesion at all, or every lesion it
+    holds is below the minimum size.
+    """
+    if np.count_nonzero(nib.load(mask_path).get_fdata()) == 0:
+        return "empty lesion segmentation"
+    return f"no lesion above {min_lesion_size} mm3"
+
+
+def save_command(output_folder):
+    """
+    Append the command that launched this run to command.txt, with the date and the folder it was run
+    from, so that a folder of features can be traced back to the include file and the arguments it
+    came from. Appended and not overwritten, since a run is often relaunched to resume or with other
+    arguments.
+    """
+    with open(os.path.join(output_folder, "command.txt"), "a") as f:
+        f.write(f"# {datetime.now():%Y-%m-%d %H:%M:%S}, run from {os.getcwd()}\n")
+        f.write(f"{sys.executable} {' '.join(shlex.quote(argument) for argument in sys.argv)}\n\n")
+
+
 def main():
     args = parse_args()
     output_folder = os.path.abspath(args.output_folder)
     os.makedirs(output_folder, exist_ok=True)
+    save_command(output_folder)
     masks_folder = os.path.join(output_folder, "binarized_manual_masks")
     os.makedirs(masks_folder, exist_ok=True)
 
@@ -317,28 +394,35 @@ def main():
 
     df_manual_features = pd.DataFrame()
     df_pred_features = pd.DataFrame()
-    failed_scans = []
+    excluded_scans = []
 
     for entry in tqdm(entries, desc="Extracting features"):
         _, pred_seg_path = get_pred_paths(entry, args.pred_folder)
+
+        # Steps needed by both mask sources: a failure here excludes the scan from both tables
         try:
             sex, date_birth = get_subject_demographics(participants_df, entry["subject"])
-
             # Decide once per scan which lesions are critical, on both mask sources
             manual_labels, pred_labels = label_lesions(
                 entry["label"], pred_seg_path, args.min_lesion_size, args.overlap_ratio
             )
+        except Exception as error:
+            print(f"Error preparing {entry['scan_id']}: {error}")
+            traceback.print_exc()
+            excluded_scans.append(exclusion_row(entry, "both", f"error: {error}"))
+            continue
 
-            manual_scan_folder, pred_scan_folder = None, None
-
-            if args.mask_source in ("manual", "both"):
+        # Each mask source is caught separately, so that one failing does not exclude the other
+        manual_scan_folder = None
+        if args.mask_source in ("manual", "both"):
+            try:
                 binarized_manual = binarize_manual_mask(
                     entry["label"],
                     os.path.join(masks_folder, entry["scan_id"] + "_label-lesion_seg_bin.nii.gz"),
                 )
                 df_scan, manual_scan_folder = run_feature_pipeline(
                     entry, binarized_manual, "manual", sex, date_birth,
-                    output_folder, args.path_hc_data, args.min_lesion_size,
+                    output_folder, args.pred_folder, args.path_hc_data, args.min_lesion_size,
                     age_normalization=not args.no_age_normalization,
                 )
                 if df_scan is not None:
@@ -346,16 +430,23 @@ def main():
                         [df_manual_features, add_manual_labels(df_scan, entry, manual_labels)], ignore_index=True
                     )
                 else:
-                    print(f"No manual lesion above {args.min_lesion_size} mm3 in {entry['scan_id']}")
+                    reason = describe_exclusion(binarized_manual, args.min_lesion_size)
+                    print(f"{entry['scan_id']} has no manual lesion to analyse: {reason}")
+                    excluded_scans.append(exclusion_row(entry, "manual", reason))
+            except Exception as error:
+                print(f"Error extracting the manual features of {entry['scan_id']}: {error}")
+                traceback.print_exc()
+                excluded_scans.append(exclusion_row(entry, "manual", f"error: {error}"))
 
-            if args.mask_source in ("pred", "both"):
+        if args.mask_source in ("pred", "both"):
+            try:
                 pred_scan_folder = os.path.join(output_folder, "pred", entry["scan_id"])
                 # Reuse the image-level products of the manual run (above all the registration)
                 if manual_scan_folder is not None and os.path.isdir(manual_scan_folder):
                     share_image_level_outputs(manual_scan_folder, pred_scan_folder, entry["scan_id"])
                 df_scan, pred_scan_folder = run_feature_pipeline(
                     entry, pred_seg_path, "pred", sex, date_birth,
-                    output_folder, args.path_hc_data, args.min_lesion_size,
+                    output_folder, args.pred_folder, args.path_hc_data, args.min_lesion_size,
                     age_normalization=not args.no_age_normalization,
                 )
                 if df_scan is not None:
@@ -363,18 +454,13 @@ def main():
                         [df_pred_features, add_pred_labels(df_scan, entry, pred_seg_path, pred_labels)], ignore_index=True
                     )
                 else:
-                    print(f"No predicted lesion above {args.min_lesion_size} mm3 in {entry['scan_id']}")
-
-        except Exception as error:
-            print(f"Error extracting the features of {entry['scan_id']}: {error}")
-            traceback.print_exc()
-            failed_scans.append({
-                "subject": entry["subject"],
-                "session": entry["session"],
-                "scan_id": entry["scan_id"],
-                "scan_file": entry["image"],
-                "error": str(error),
-            })
+                    reason = describe_exclusion(pred_seg_path, args.min_lesion_size)
+                    print(f"{entry['scan_id']} has no predicted lesion to analyse: {reason}")
+                    excluded_scans.append(exclusion_row(entry, "pred", reason))
+            except Exception as error:
+                print(f"Error extracting the predicted features of {entry['scan_id']}: {error}")
+                traceback.print_exc()
+                excluded_scans.append(exclusion_row(entry, "pred", f"error: {error}"))
 
     # Save the feature tables
     if not df_manual_features.empty:
@@ -395,10 +481,13 @@ def main():
             f"{n_critical} critical) from {df_pred_features['subject'].nunique()} subjects saved to: {pred_csv}"
         )
 
-    if failed_scans:
-        failed_csv = os.path.join(output_folder, "failed_scans.csv")
-        pd.DataFrame(failed_scans).to_csv(failed_csv, index=False)
-        print(f"{len(failed_scans)} scan(s) failed. See: {failed_csv}")
+    # Save the scans that have no lesion in a feature table, and why. Written even when empty, so
+    # that the file always documents how the cohort went from the include file to the feature tables.
+    excluded_csv = os.path.join(output_folder, "excluded_scans.csv")
+    pd.DataFrame(
+        excluded_scans, columns=["subject", "session", "scan_id", "scan_file", "mask_source", "reason"]
+    ).to_csv(excluded_csv, index=False)
+    print(f"{len(excluded_scans)} scan(s) excluded from a feature table. See: {excluded_csv}")
 
 
 if __name__ == "__main__":
