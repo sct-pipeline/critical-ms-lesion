@@ -36,6 +36,7 @@ Author: Pierre-Louis Benveniste
 """
 import os
 import sys
+import shlex
 import argparse
 from collections import Counter
 
@@ -260,6 +261,9 @@ def main():
     if os.path.exists(path_logger):
         os.remove(path_logger)
     logger.add(path_logger, level="INFO")
+    # The command first, so that a result folder can be traced back to the run that produced it
+    logger.info(f"Command: {sys.executable} {' '.join(shlex.quote(argument) for argument in sys.argv)}")
+    logger.info(f"Run from: {os.getcwd()}")
 
     # Load the include file and convert to entries
     entries = load_include(args.include)
