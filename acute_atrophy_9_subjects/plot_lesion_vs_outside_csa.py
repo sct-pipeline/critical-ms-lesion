@@ -12,6 +12,12 @@ yearly CSA change per subject (slope of the percent change vs. years since basel
 through the baseline), outside vs. at lesion level: one dot per subject and level, a grey line
 linking each subject's two values, and the median of each level marked by a black bar.
 
+A log file ("_yearly_change_stats.log" next to the first figure) compares the yearly changes at
+lesion level vs. outside the lesion, for mean and median CSA, with tests suited to paired
+data from a small sample: paired t-test (comparison of means, with the mean difference and its
+95% CI and Cohen's dz), Wilcoxon signed-rank test, and Shapiro-Wilk test of the differences'
+normality to help choose between them. Requires scipy.
+
 Example:
     python plot_lesion_vs_outside_csa.py -o figure.png \
         --subject sub-003 sub-003_lesion_level_csa_smooth10.csv 1 \
@@ -25,6 +31,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from scipy import stats
 
 from compute_lesion_level_csa import parse_session_date
 
@@ -40,6 +47,66 @@ def yearly_change(months, percent_change):
     valid = np.isfinite(years) & np.isfinite(percent)
     denominator = (years[valid] ** 2).sum()
     return (years[valid] * percent[valid]).sum() / denominator if denominator > 0 else np.nan
+
+
+def describe(values):
+    q1, q3 = np.percentile(values, [25, 75])
+    sd = np.std(values, ddof=1) if len(values) > 1 else np.nan
+    return f"mean {values.mean():.2f} (SD {sd:.2f}), median {np.median(values):.2f} (IQR {q1:.2f} to {q3:.2f})"
+
+
+def paired_comparison(subject_ids, outside, lesion):
+    """Log lines comparing the yearly changes at lesion level vs. outside it (paired by subject)."""
+    valid = np.isfinite(outside) & np.isfinite(lesion)
+    ids = np.array(subject_ids)[valid]
+    outside, lesion = outside[valid], lesion[valid]
+    difference = lesion - outside
+    n = len(difference)
+
+    lines = [f"  Subjects with both values (n = {n})", "",
+             f"  {'subject':<10}{'outside':>10}{'at lesion':>12}{'difference':>12}"]
+    lines += [f"  {s:<10}{o:>10.2f}{l:>12.2f}{d:>12.2f}" for s, o, l, d in zip(ids, outside, lesion, difference)]
+    lines += ["", f"  Outside lesion : {describe(outside)}",
+              f"  At lesion      : {describe(lesion)}",
+              f"  Difference     : {describe(difference)}   (at lesion - outside)", ""]
+    if n < 3:
+        return lines + ["  Not enough subjects for statistical tests (n >= 3 needed)."]
+
+    shapiro_w, shapiro_p = stats.shapiro(difference)
+    t_stat, t_p = stats.ttest_rel(lesion, outside)
+    sd_difference = difference.std(ddof=1)
+    ci_low, ci_high = stats.t.interval(0.95, n - 1, loc=difference.mean(), scale=sd_difference / np.sqrt(n))
+    try:
+        wilcoxon_stat, wilcoxon_p = stats.wilcoxon(lesion, outside)
+    except ValueError:
+        wilcoxon_stat, wilcoxon_p = np.nan, np.nan
+
+    lines += [
+        f"  Shapiro-Wilk normality test of the paired differences: W = {shapiro_w:.3f}, p = {shapiro_p:.4f}"
+        + ("  (differences not normal: prefer the Wilcoxon test)" if shapiro_p < 0.05 else "  (no evidence against normality)"),
+        f"  Paired t-test, comparison of means: t({n - 1}) = {t_stat:.3f}, p = {t_p:.4f}",
+        f"  Mean difference (at lesion - outside): {difference.mean():.2f} % per year, 95% CI {ci_low:.2f} to {ci_high:.2f}",
+        f"  Effect size, Cohen's dz: {difference.mean() / sd_difference if sd_difference > 0 else np.nan:.2f}",
+        f"  Wilcoxon signed-rank test, no normality assumption: W = {wilcoxon_stat:.1f}, p = {wilcoxon_p:.4f}",
+    ]
+    return lines
+
+
+def write_stats_log(subjects, yearly, log_path):
+    lines = ["Yearly CSA change (% per year): at lesion level vs. outside the lesion (above + below average)",
+             "Yearly change = slope of the percent change since baseline vs. years, fitted through the baseline.",
+             "Subjects (lesion_area_id): " + ", ".join(f"{subject_id} ({lesion_id})" for subject_id, _, lesion_id in subjects),
+             "All tests are two-sided and paired by subject, alpha = 0.05. Two comparisons (mean and median CSA) are",
+             "not adjusted for multiplicity (Bonferroni threshold: 0.025). Small sample: interpret with caution.", ""]
+    subject_ids = [subject_id for subject_id, _, _ in subjects]
+    for stat in ["mean", "median"]:
+        outside = np.array([yearly[stat][subject_id][0] for subject_id in subject_ids])
+        lesion = np.array([yearly[stat][subject_id][1] for subject_id in subject_ids])
+        lines += [f"=== {stat.capitalize()} CSA ===", ""] + paired_comparison(subject_ids, outside, lesion) + [""]
+
+    with open(log_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"Statistics log saved: {log_path}")
 
 
 parser = argparse.ArgumentParser(description="Plot the CSA evolution at lesion level vs. outside the lesion (mean and median).")
@@ -117,3 +184,4 @@ axes_yearly[0].set_ylabel("Yearly CSA change (% per year)")
 fig_yearly.tight_layout()
 yearly_path, extension = os.path.splitext(args.output)
 fig_yearly.savefig(f"{yearly_path}_yearly_change{extension}", dpi=300, bbox_inches="tight")
+write_stats_log(args.subject, yearly, f"{yearly_path}_yearly_change_stats.log")
