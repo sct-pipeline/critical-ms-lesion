@@ -30,7 +30,7 @@ These are called internally by `compute_csa_on_include.py`, but can also be run 
 - **`plot_subject_csa.py`** — plots CSA vs. PAM50 axial slice for a subject, one colored line
   per session (color runs along a viridis scale keyed to session date), with lesion shading
   and vertebral level boundaries. Supports moving-average smoothing (`-s/--smooth_window`).
-- **`compute_lesion_auc.py`** — for a subject, finds each continuous lesion area (union of
+- **`compute_lesion_level_csa.py`** — for a subject, finds each continuous lesion area (union of
   lesion extent across all sessions), truncates all sessions to the PAM50 slice range they
   actually share (excluding slices where any session lacks real CSA coverage), and computes
   the AUC of the CSA curve over that range per timepoint, along with the AUC ratio and days
@@ -38,3 +38,7 @@ These are called internally by `compute_csa_on_include.py`, but can also be run 
 - **`plot_native_and_pam50_csa.py`** — plots CSA vs. slice for a single scan in both PAM50 and
   native slice space, stacked in one figure, from a pair of `sct_process_segmentation` csvs
   (`--csa_native` / `--csa_pam50`).
+- **`sensitivity_analysis.py`** — given a folder of per-subject CSA csvs, runs
+  `compute_lesion_level_csa.py` at smoothing windows 1/5/10/20 for every subject, then summarizes
+  across the cohort how sensitive the baseline-referenced AUC ratio is to that window choice
+  (supplementary table + per-lesion-area breakdown + trajectory/deviation plots).

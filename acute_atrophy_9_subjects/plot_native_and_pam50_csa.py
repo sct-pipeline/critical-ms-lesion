@@ -62,7 +62,7 @@ def plot_csa_panel(ax, df, title, xlabel):
 
     ax.set_title(title, fontweight='bold', fontsize=LABELS_FONT_SIZE)
     ax.set_xlabel(xlabel, fontsize=LABELS_FONT_SIZE)
-    ax.set_ylabel('CSA (mm2)', fontsize=LABELS_FONT_SIZE)
+    ax.set_ylabel('CSA (mm²)', fontsize=LABELS_FONT_SIZE)
     ax.tick_params(axis='both', which='major', labelsize=TICKS_FONT_SIZE)
 
     ax.spines['right'].set_visible(False)
