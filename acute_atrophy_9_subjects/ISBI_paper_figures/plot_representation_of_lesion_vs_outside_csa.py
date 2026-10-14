@@ -111,6 +111,5 @@ left, right = ("superior", "inferior") if SUPERIOR_ON_LEFT else ("inferior", "su
 ax.text(0.0, -0.035, f"← {left}", transform=ax.transAxes, ha="left", va="top", fontsize=6.5, color=MUTED)
 ax.text(1.0, -0.035, f"{right} →", transform=ax.transAxes, ha="right", va="top", fontsize=6.5, color=MUTED)
 
-fig.savefig(f"{OUT}.pdf", bbox_inches="tight", pad_inches=0.02)
 fig.savefig(f"{OUT}.png", dpi=300, bbox_inches="tight", pad_inches=0.02)
-print(f"Saved {OUT}.pdf / {OUT}.png  (L = {L_start}-{L_end}, R_below = {R_below}, R_above = {R_above})")
+print(f"Saved {OUT}.png  (L = {L_start}-{L_end}, R_below = {R_below}, R_above = {R_above})")
