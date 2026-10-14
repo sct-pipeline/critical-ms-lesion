@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
 from plot_subject_csa import plot_csa_panel, smooth_csa_columns
-from compute_lesion_auc import parse_session_date
+from compute_lesion_level_csa import parse_session_date
 
 DAYS_PER_MONTH = 30.4375
 
