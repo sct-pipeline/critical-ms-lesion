@@ -19,6 +19,8 @@ Input:
         subject (both bounds inclusive). Can be given once per subject; a subject without one is
         plotted over its full slice range.
     -s / --smooth_window: window size (in slices) for moving-average smoothing of CSA (default 1, no smoothing)
+    --labels_font_size / --ticks_font_size: font sizes of the title and axis labels (default 24) and of
+        the tick labels, vertebral level labels and legend (default 18)
 
 Example:
     python plot_paper_figures.py -i /path/to/csvs -o /path/to/figures \
@@ -50,6 +52,10 @@ def parse_args():
                         help="PAM50 slice range to display for a subject (inclusive). Repeat for each subject.")
     parser.add_argument("-s", "--smooth_window", type=int, default=1,
                         help="Window size (in slices) for moving-average smoothing of CSA. Default 1 (no smoothing).")
+    parser.add_argument("--labels_font_size", type=int, default=22,
+                        help="Font size of the title and axis labels. Default 22.")
+    parser.add_argument("--ticks_font_size", type=int, default=15,
+                        help="Font size of the tick labels, vertebral level labels and legend. Default 15.")
     return parser.parse_args()
 
 
@@ -72,7 +78,8 @@ def rename_sessions_by_month(df):
     return df, [labels[session_id] for session_id in sessions]
 
 
-def plot_paper_figure(subject_id, input_csv, output_png, slice_range=None, smooth_window=1):
+def plot_paper_figure(subject_id, input_csv, output_png, slice_range=None, smooth_window=1,
+                      labels_font_size=24, ticks_font_size=18):
     df = pd.read_csv(input_csv)
     df = smooth_csa_columns(df, smooth_window, ["CSA_mm2"])
     df, sessions = rename_sessions_by_month(df)
@@ -87,8 +94,8 @@ def plot_paper_figure(subject_id, input_csv, output_png, slice_range=None, smoot
     palette = [cm.viridis(1 - i / max(n_sessions - 1, 1)) for i in range(n_sessions)]
 
     fig, ax = plt.subplots(figsize=(16, 8))
-    plot_csa_panel(ax, df, sessions, palette, "CSA_mm2",
-                   f'CSA across PAM50 axial slices and vertebral levels for {subject_id}')
+    plot_csa_panel(ax, df, sessions, palette, "CSA_mm2","",
+                   labels_font_size=labels_font_size, ticks_font_size=ticks_font_size)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_png)), exist_ok=True)
     plt.savefig(output_png, dpi=300, bbox_inches='tight')
@@ -107,7 +114,8 @@ def main():
     for subject_id in args.subjects:
         input_csv = os.path.join(args.input_dir, f"{subject_id}_csa_with_lesions.csv")
         output_png = os.path.join(args.output_dir, f"{subject_id}_csa_paper.png")
-        plot_paper_figure(subject_id, input_csv, output_png, slice_ranges.get(subject_id), args.smooth_window)
+        plot_paper_figure(subject_id, input_csv, output_png, slice_ranges.get(subject_id), args.smooth_window,
+                          args.labels_font_size, args.ticks_font_size)
 
 
 if __name__ == "__main__":
