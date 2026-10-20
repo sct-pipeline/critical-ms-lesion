@@ -18,6 +18,9 @@ data from a small sample: paired t-test (comparison of means, with the mean diff
 95% CI and Cohen's dz), Wilcoxon signed-rank test, and Shapiro-Wilk test of the differences'
 normality to help choose between them. Requires scipy.
 
+Font sizes are set with --labels_font_size (titles, axis labels, median value labels; default 20)
+and --ticks_font_size (tick labels and legends; default 16).
+
 Example:
     python plot_lesion_vs_outside_csa.py -o figure.png \
         --subject sub-003 sub-003_lesion_level_csa_smooth10.csv 1 \
@@ -113,9 +116,17 @@ parser = argparse.ArgumentParser(description="Plot the CSA evolution at lesion l
 parser.add_argument("--subject", nargs=3, action="append", required=True, metavar=("SUBJECT", "CSV", "LESION_ID"),
                     help="Subject id, its lesion-level csv and the lesion_area_id to plot. Repeat per subject.")
 parser.add_argument("-o", "--output", required=True, help="Path to the output png file.")
+parser.add_argument("--labels_font_size", type=int, default=20,
+                    help="Font size of the titles, axis labels and value labels. Default 20.")
+parser.add_argument("--ticks_font_size", type=int, default=16,
+                    help="Font size of the tick labels and legends. Default 16.")
 args = parser.parse_args()
 
-fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+plt.rcParams.update({"font.size": args.labels_font_size, "axes.titlesize": args.labels_font_size,
+                     "axes.labelsize": args.labels_font_size, "xtick.labelsize": args.ticks_font_size,
+                     "ytick.labelsize": args.ticks_font_size, "legend.fontsize": args.ticks_font_size})
+
+fig, axes = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
 yearly = {"mean": {}, "median": {}}
 
 for idx, (subject_id, csv_path, lesion_id) in enumerate(args.subject):
@@ -158,7 +169,7 @@ fig.tight_layout()
 fig.savefig(args.output, dpi=300, bbox_inches="tight")
 
 # Second figure: yearly change per subject, outside vs. at lesion level, linked by a grey line
-fig_yearly, axes_yearly = plt.subplots(1, 2, figsize=(10, 6), sharey=True)
+fig_yearly, axes_yearly = plt.subplots(1, 2, figsize=(12, 7), sharey=True)
 median_handle = Line2D([0], [0], color="black", linewidth=3, label="Median")
 for ax, stat in zip(axes_yearly, ["mean", "median"]):
     for idx, (subject_id, _, _) in enumerate(args.subject):
