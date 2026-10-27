@@ -2,10 +2,10 @@
 This script plots the evolution of the spinal cord cross-sectional area (CSA) over time, in the
 lesion level versus in a lesion-free spinal cord region outside it, for one or several subjects.
 
-Each subject is given as a pair of AUC csvs (output of compute_lesion_auc.py, or the same csv
+Each subject is given as a pair of AUC csvs (output of compute_lesion_level_csa.py, or the same csv
 format computed on a healthy region): one for the lesion area and one for the healthy region.
 The plotted quantity is the CSA AUC (area under the CSA curve over the region, in mm2 x slices,
-as computed by compute_lesion_auc.py). The x-axis is the time in months since the baseline
+as computed by compute_lesion_level_csa.py). The x-axis is the time in months since the baseline
 (oldest) scan of that subject. Lesion levels are drawn in red, levels outside the lesion in blue,
 and each subject has its own marker.
 
@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from plot_subject_csa import LABELS_FONT_SIZE, TICKS_FONT_SIZE
-from compute_lesion_auc import parse_session_date
+from compute_lesion_level_csa import parse_session_date
 
 DAYS_PER_MONTH = 30.4375
 LESION_COLOR = "#c44e52"
@@ -53,7 +53,7 @@ def parse_args():
 def load_series(csv_path):
     """
     Reads an AUC csv and returns one DataFrame per lesion area, sorted chronologically, with the
-    columns months_since_baseline and auc_percent_change (alongside the csv's AUC).
+    columns months_since_baseline and auc_percent_change (alongside the csv's CSA_AUC).
     """
     df = pd.read_csv(csv_path)
     if df.empty:
@@ -69,7 +69,7 @@ def load_series(csv_path):
     for _, df_area in df.groupby("lesion_area_id"):
         df_area = df_area.sort_values("date").copy()
         df_area["months_since_baseline"] = (df_area["date"] - df_area["date"].iloc[0]).dt.days / DAYS_PER_MONTH
-        df_area["auc_percent_change"] = 100 * (df_area["AUC"] / df_area["AUC"].iloc[0] - 1)
+        df_area["auc_percent_change"] = 100 * (df_area["CSA_AUC"] / df_area["CSA_AUC"].iloc[0] - 1)
         series.append(df_area)
     return series
 
@@ -121,7 +121,7 @@ def main():
         subject_series.append((subject_id, MARKERS[idx % len(MARKERS)],
                                load_series(lesion_csv), load_series(healthy_csv)))
 
-    plot_evolution(subject_series, "AUC", "CSA AUC (mm² × slices)",
+    plot_evolution(subject_series, "CSA_AUC", "CSA AUC (mm² × slices)",
                    os.path.join(args.output_dir, "atrophy_csa_auc.png"))
     plot_evolution(subject_series, "auc_percent_change", "CSA AUC change since baseline (%)",
                    os.path.join(args.output_dir, "atrophy_csa_auc_percent_change.png"), zero_line=True)

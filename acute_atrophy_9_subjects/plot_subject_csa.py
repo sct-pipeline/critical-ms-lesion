@@ -59,7 +59,8 @@ def smooth_csa_columns(df, smooth_window, columns):
     return pd.concat(smoothed_sessions, ignore_index=True)
 
 
-def plot_csa_panel(ax, df, sessions, palette, csa_column, title):
+def plot_csa_panel(ax, df, sessions, palette, csa_column, title,
+                   labels_font_size=LABELS_FONT_SIZE, ticks_font_size=TICKS_FONT_SIZE):
     """
     Plots one CSA-vs-slice panel (lesion shading, one line per session, vertebral level
     boundaries/labels) onto ax, for the given CSA column.
@@ -105,13 +106,13 @@ def plot_csa_panel(ax, df, sessions, palette, csa_column, title):
         else:
             level = 'C' + str(vert[x])
         ax.text(df_vert.loc[ind_vert_mid[idx], 'Slice (I->S)'], ymin, level, horizontalalignment='center',
-                verticalalignment='bottom', color='black', fontsize=TICKS_FONT_SIZE)
+                verticalalignment='bottom', color='black', fontsize=ticks_font_size)
 
-    ax.set_title(title, fontweight='bold', fontsize=LABELS_FONT_SIZE)
-    ax.set_xlabel('PAM50 Axial Slice #', fontsize=LABELS_FONT_SIZE)
-    ax.set_ylabel('CSA (mm²)', fontsize=LABELS_FONT_SIZE)
-    ax.tick_params(axis='both', which='major', labelsize=TICKS_FONT_SIZE)
-    ax.legend(loc='upper right', fontsize=TICKS_FONT_SIZE)
+    ax.set_title(title, fontweight='bold', fontsize=labels_font_size)
+    ax.set_xlabel('PAM50 Axial Slice #', fontsize=labels_font_size)
+    ax.set_ylabel('CSA (mm²)', fontsize=labels_font_size)
+    ax.tick_params(axis='both', which='major', labelsize=ticks_font_size)
+    ax.legend(loc='upper right', fontsize=ticks_font_size)
 
     # Remove spines
     ax.spines['right'].set_visible(False)

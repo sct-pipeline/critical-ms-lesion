@@ -19,12 +19,14 @@ rows are also aggregated into a single csv across the whole cohort. All three cs
 subject_id, session_id and scan_file columns.
 
 For each subject, a full-cord CSA plot, a left/right hemicord CSA plot (both plot_subject_csa.py,
-the latter via its hemi=True flag) and a per-lesion-area AUC csv (compute_lesion_auc.py, with
+the latter via its hemi=True flag) and a per-lesion-area AUC csv (compute_lesion_level_csa.py, with
 full/left/right AUC columns) are also generated, each without smoothing and with
 smooth_window=10:
     - <subject_id>_csa_plot.png / <subject_id>_csa_plot_smooth10.png
     - <subject_id>_csa_plot_hemi.png / <subject_id>_csa_plot_hemi_smooth10.png
-    - <subject_id>_lesion_auc.csv / <subject_id>_lesion_auc_smooth10.csv
+    - <subject_id>_lesion_level_csa.csv / <subject_id>_lesion_level_csa_smooth10.csv
+and a C1-C2 / C2-C3 mean CSA csv with lesion presence per level (compute_vertebral_level_csa.py):
+    - <subject_id>_vertebral_level_csa.csv / <subject_id>_vertebral_level_csa_smooth10.csv
 
 Input:
     -i / --include_json: path to the include json file (output of create_include_json.py)
@@ -46,7 +48,8 @@ import nibabel as nib
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
 from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_csa
 from plot_subject_csa import plot_subject_csa
-from compute_lesion_auc import compute_lesion_auc
+from compute_lesion_level_csa import compute_lesion_level_csa
+from compute_vertebral_level_csa import compute_vertebral_level_csa
 
 
 def parse_args():
@@ -203,8 +206,12 @@ def main():
             plot_subject_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_csa_plot_hemi_smooth10.png"), smooth_window=10, hemi=True)
 
             # Compute the per-lesion-area AUC (full cord, left and right hemicord), without and with smoothing
-            compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc.csv"), smooth_window=1)
-            compute_lesion_auc(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_auc_smooth10.csv"), smooth_window=10)
+            compute_lesion_level_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_level_csa.csv"), smooth_window=1)
+            compute_lesion_level_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_lesion_level_csa_smooth10.csv"), smooth_window=10)
+
+            # Compute the C1-C2 and C2-C3 mean CSA, with lesion presence at each level, without and with smoothing
+            compute_vertebral_level_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_vertebral_level_csa.csv"), smooth_window=1)
+            compute_vertebral_level_csa(subject_csv_path, os.path.join(output_folder, f"{subject_id}_vertebral_level_csa_smooth10.csv"), smooth_window=10)
 
         df_all = pd.concat([df_all, df_subject], ignore_index=True)
 

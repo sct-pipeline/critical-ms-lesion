@@ -1,6 +1,6 @@
 """
 Plots the evolution of the CSA AUC at lesion level for several subjects, one line per subject,
-using the lesion-area AUC csvs of compute_lesion_auc.py. For subjects with several lesion areas,
+using the lesion-area AUC csvs of compute_lesion_level_csa.py. For subjects with several lesion areas,
 the lesion_area_id to use is chosen per subject.
 
 Two figures are saved in the output folder: lesion_auc.png (CSA AUC) and lesion_auc_percent_change.png
@@ -18,7 +18,7 @@ import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from compute_lesion_auc import parse_session_date
+from compute_lesion_level_csa import parse_session_date
 
 parser = argparse.ArgumentParser(description="Plot the CSA AUC at lesion level for several subjects.")
 parser.add_argument("--subject", nargs=3, action="append", required=True, metavar=("SUBJECT", "AUC_CSV", "LESION_ID"),
@@ -34,10 +34,10 @@ for subject_id, csv_path, lesion_id in args.subject:
     df["date"] = pd.to_datetime(df["session_id"].map(parse_session_date))
     df = df.sort_values("date")
     df["months"] = (df["date"] - df["date"].iloc[0]).dt.days / 30.4375
-    df["percent_change"] = 100 * (df["AUC"] / df["AUC"].iloc[0] - 1)
+    df["percent_change"] = 100 * (df["CSA_AUC"] / df["CSA_AUC"].iloc[0] - 1)
     series.append((subject_id, df))
 
-for column, ylabel, filename in [("AUC", "CSA AUC (mm² × slices)", "lesion_auc.png"),
+for column, ylabel, filename in [("CSA_AUC", "CSA AUC (mm² × slices)", "lesion_auc.png"),
                                  ("percent_change", "CSA AUC change since baseline (%)", "lesion_auc_percent_change.png")]:
     fig, ax = plt.subplots(figsize=(10, 6))
     for subject_id, df in series:

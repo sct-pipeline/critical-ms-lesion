@@ -1,16 +1,16 @@
 """
 Summarizes, across all subjects, the sensitivity of the per-lesion-area CSA AUC to the
-moving-average smoothing window (-s/--smooth_window of compute_lesion_auc.py).
+moving-average smoothing window (-s/--smooth_window of compute_lesion_level_csa.py).
 
 Expects a folder holding the per-subject CSA csvs (output of compute_csa_on_include.py, one
 "<subject_id>_csa_with_lesions.csv" per subject). This script first computes, for every subject,
-the per-lesion-area AUC at smoothing windows 1, 5, 10 and 20 (via compute_lesion_auc.py), writing
+the per-lesion-area AUC at smoothing windows 1, 5, 10 and 20 (via compute_lesion_level_csa.py), writing
 those per-subject, per-window csvs to <output_dir>/auc_csvs/, then summarizes their sensitivity
 to the window as described below.
 
 The longitudinal metric reported here is the AUC ratio to the BASELINE timepoint (each lesion
 area's first session), recomputed from the per-session AUC values, rather than the ratio to the
-previous timepoint that compute_lesion_auc.py writes. Deviations are reported against the
+previous timepoint that compute_lesion_level_csa.py writes. Deviations are reported against the
 REFERENCE window (-r, default 10) -- the window whose results the paper reports -- so the table
 answers "would the reported conclusion change had a different window been chosen?".
 
@@ -18,7 +18,7 @@ An "observation" is one post-baseline (subject, lesion area, session) triplet. B
 are excluded: their ratio is 1.0 at every window by construction and would dilute the summary.
 
 Outputs (written to -o, default the input folder):
-  - auc_csvs/                   : intermediate per-subject, per-window AUC csvs (compute_lesion_auc.py
+  - auc_csvs/                   : intermediate per-subject, per-window AUC csvs (compute_lesion_level_csa.py
                                   output), one "<subject_id>_lesion_auc_smooth<n>.csv" per (subject, window)
   - sensitivity_long.csv        : one row per observation per window, with baseline ratios,
                                   lesion-area width and the window as a % of that width
@@ -50,13 +50,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# Imported after matplotlib.use("Agg") above, since compute_lesion_auc imports plot_subject_csa,
+# Imported after matplotlib.use("Agg") above, since compute_lesion_level_csa imports plot_subject_csa,
 # which itself imports matplotlib.pyplot -- the backend must already be set to Agg by then.
-from compute_lesion_auc import compute_lesion_auc
+from compute_lesion_level_csa import compute_lesion_level_csa
 
 SMOOTH_WINDOWS = [1, 5, 10, 20]
-AUC_COLUMNS = ["AUC", "AUC_left", "AUC_right"]
-RATIO_COLUMNS = ["AUC_ratio_to_baseline", "AUC_left_ratio_to_baseline", "AUC_right_ratio_to_baseline"]
+AUC_COLUMNS = ["CSA_AUC", "CSA_AUC_left", "CSA_AUC_right"]
+RATIO_COLUMNS = ["CSA_AUC_ratio_to_baseline", "CSA_AUC_left_ratio_to_baseline", "CSA_AUC_right_ratio_to_baseline"]
 AREA_KEYS = ["subject_id", "lesion_area_id"]
 OBSERVATION_KEYS = AREA_KEYS + ["session_id"]
 FILENAME_PATTERN = re.compile(r"^(?P<subject>.+?)_lesion_auc(?:_smooth(?P<window>\d+))?\.csv$")
@@ -82,7 +82,7 @@ def parse_args():
 
 def compute_auc_csvs(input_dir, output_dir):
     """
-    Runs compute_lesion_auc.py on every "<subject_id>_csa_with_lesions.csv" in input_dir, at each
+    Runs compute_lesion_level_csa.py on every "<subject_id>_csa_with_lesions.csv" in input_dir, at each
     window in SMOOTH_WINDOWS, writing "<subject_id>_lesion_auc_smooth<n>.csv" to
     <output_dir>/auc_csvs/. Returns that folder's path.
     """
@@ -97,7 +97,7 @@ def compute_auc_csvs(input_dir, output_dir):
         subject_id = os.path.basename(csa_csv).replace("_csa_with_lesions.csv", "")
         for window in SMOOTH_WINDOWS:
             output_csv = os.path.join(auc_dir, f"{subject_id}_lesion_auc_smooth{window}.csv")
-            compute_lesion_auc(csa_csv, output_csv, smooth_window=window)
+            compute_lesion_level_csa(csa_csv, output_csv, smooth_window=window)
 
     return auc_dir
 
@@ -114,7 +114,7 @@ def load_auc_csvs(input_dir):
             continue
         df = pd.read_csv(path)
         if df.empty:
-            # Subject with no lesion at any timepoint: compute_lesion_auc.py writes a header-only csv.
+            # Subject with no lesion at any timepoint: compute_lesion_level_csa.py writes a header-only csv.
             continue
         df["smooth_window"] = int(match.group("window") or 1)
         if "subject_id" not in df.columns:
@@ -132,7 +132,7 @@ def add_baseline_ratios(df):
     Adds, per (smooth_window, subject, lesion area), each timepoint's AUC divided by the AUC at that
     lesion area's baseline (chronologically first) session, the days elapsed since it, the lesion
     area's width in slices, and the smoothing window as a percentage of that width.
-    Replaces the ratio-to-previous-timepoint columns written by compute_lesion_auc.py.
+    Replaces the ratio-to-previous-timepoint columns written by compute_lesion_level_csa.py.
     """
     df = df.sort_values(["smooth_window"] + OBSERVATION_KEYS).copy()
     group = df.groupby(["smooth_window"] + AREA_KEYS, sort=False)
@@ -297,7 +297,7 @@ def plot_trajectories(df_long, windows, output_png):
         df_area = df_long[(df_long["subject_id"] == subject_id) & (df_long["lesion_area_id"] == area_id)]
         for window, color in zip(windows, colors):
             df_window = df_area[df_area["smooth_window"] == window].sort_values("days_since_baseline")
-            ax.plot(df_window["days_since_baseline"], df_window["AUC_ratio_to_baseline"],
+            ax.plot(df_window["days_since_baseline"], df_window["CSA_AUC_ratio_to_baseline"],
                     marker="o", ms=4, color=color, label=f"n={window}")
         width = int(df_area["lesion_area_width"].iloc[0])
         ax.set_title(f"{subject_id} · area {area_id} ({width} slices)", fontsize=9)
@@ -353,7 +353,7 @@ def main():
 
     auc_dir = compute_auc_csvs(input_dir, output_dir)
     df_long = add_baseline_ratios(load_auc_csvs(auc_dir))
-    wide, windows = get_deviations(df_long, args.reference_window, "AUC_ratio_to_baseline")
+    wide, windows = get_deviations(df_long, args.reference_window, "CSA_AUC_ratio_to_baseline")
 
     df_table = build_table(df_long, wide, windows, args.reference_window, args.atrophy_threshold)
     df_area = build_by_lesion_area(wide, windows, args.reference_window)
@@ -368,7 +368,7 @@ def main():
 
     # Hemicord metrics get a caption clause, not their own table.
     hemicord_max_dev = {}
-    for ratio_column in ["AUC_left_ratio_to_baseline", "AUC_right_ratio_to_baseline"]:
+    for ratio_column in ["CSA_AUC_left_ratio_to_baseline", "CSA_AUC_right_ratio_to_baseline"]:
         wide_hemi, _ = get_deviations(df_long, args.reference_window, ratio_column, quiet=True)
         hemicord_max_dev[ratio_column] = max(wide_hemi[f"dev_n{w}"].abs().max() for w in windows)
 
@@ -406,7 +406,7 @@ def main():
     print(f"Largest deviation from any alternative window: {max_deviation_pp:.2f} pp")
     print(f"Signal-to-sensitivity ratio: {mean_atrophy_pp / max_deviation_pp:.1f}x")
     print("Hemicord max deviation: " +
-          ", ".join(f"{k.split('_')[1]} {v:.2f} pp" for k, v in hemicord_max_dev.items()))
+          ", ".join(f"{k.split('_')[2]} {v:.2f} pp" for k, v in hemicord_max_dev.items()))
     print(f"\nOutputs written to: {output_dir}")
 
 
