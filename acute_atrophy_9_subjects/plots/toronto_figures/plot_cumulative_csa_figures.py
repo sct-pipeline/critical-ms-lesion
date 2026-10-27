@@ -25,7 +25,7 @@ Input:
         the tick labels, vertebral level labels and legend (default 15)
 
 Example:
-    python toronto_figures/plot_cumulative_csa_figures.py -i /path/to/csvs -o /path/to/figures \
+    python plots/toronto_figures/plot_cumulative_csa_figures.py -i /path/to/csvs -o /path/to/figures \
         --slice_range sub-003 760 900 --slice_range sub-006 780 950 -s 10
 
 Author: Pierre-Louis Benveniste

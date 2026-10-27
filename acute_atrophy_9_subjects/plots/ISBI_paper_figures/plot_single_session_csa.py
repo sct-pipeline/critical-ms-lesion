@@ -4,7 +4,7 @@ for a SINGLE session, using the per-scan csv produced by compute_csa_on_include.
 (csa_with_lesions.csv, i.e. the same csv as the per-subject one but without the
 subject_id/session_id columns).
 
-It reuses plot_csa_panel() from acute_atrophy_9_subjects/plot_subject_csa.py, so the output has
+It reuses plot_csa_panel() from acute_atrophy_9_subjects/plots/plot_subject_csa.py, so the output has
 exactly the same format as the multi-session subject plots (lesion shading, vertebral level
 boundaries/labels, inverted x-axis, same fonts/legend). The only difference is that there is a
 single line instead of one line per timepoint, drawn in blue.
@@ -27,8 +27,7 @@ import matplotlib.pyplot as plt
 
 LINE_COLOR = 'tab:blue'
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "critical-ms-lesion", "acute_atrophy_9_subjects"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from plot_subject_csa import plot_csa_panel, smooth_csa_columns
 
 

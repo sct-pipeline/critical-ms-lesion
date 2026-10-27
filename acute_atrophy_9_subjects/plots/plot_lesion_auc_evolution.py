@@ -14,10 +14,12 @@ Example:
 Author: Pierre-Louis Benveniste
 """
 import os
+import sys
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from compute_lesion_level_csa import parse_session_date
 
 parser = argparse.ArgumentParser(description="Plot the CSA AUC at lesion level for several subjects.")

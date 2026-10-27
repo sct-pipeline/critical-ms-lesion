@@ -16,7 +16,7 @@ import argparse
 import traceback
 import pandas as pd
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "detection"))
 from detect_critical_lesion import run_sc_segmentation
 
 

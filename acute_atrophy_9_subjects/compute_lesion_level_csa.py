@@ -52,11 +52,13 @@ Author: Pierre-Louis Benveniste
 """
 import os
 import re
+import sys
 import math
 import argparse
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plots"))
 from plot_subject_csa import smooth_csa_columns
 
 

@@ -17,6 +17,7 @@ import sys
 import argparse
 import pandas as pd
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plots"))
 from plot_subject_csa import smooth_csa_columns
 from compute_lesion_level_csa import CSA_COLUMNS, get_common_slices, compute_csa_stats, parse_session_date, get_month_labels
 

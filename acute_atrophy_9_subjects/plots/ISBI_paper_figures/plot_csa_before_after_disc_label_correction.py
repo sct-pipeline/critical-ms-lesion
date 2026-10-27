@@ -1,13 +1,14 @@
 """
-This script plots the cross-sectional area (CSA) of sub-002 across PAM50 axial slices and
-vertebral levels, before and after correction, with a smoothing window of 10 slices. It uses
-the same plotting format as plot_subject_csa.py (called in compute_csa_on_include.py with
-smooth_window=10), with one line for the CSA before correction and one line after correction.
+This script plots the cross-sectional area (CSA) of sub-002 at session 2015 (M62) across PAM50
+axial slices and vertebral levels, before and after disc level correction, with a smoothing
+window of 10 slices. It uses the same plotting format as plot_subject_csa.py (called in
+compute_csa_on_include.py with smooth_window=10), with one line for the CSA before correction
+and one line after correction.
 
 Input:
     --before_csv: path to the per-scan csv before correction (default: csa_with_lesions_before_correction.csv next to this script)
     --after_csv: path to the per-scan csv after correction (default: csa_with_lesions_after_correction.csv next to this script)
-    -o / --output: path to the output png file (default: sub-002_csa_plot_before_after_correction_smooth10.png next to this script)
+    -o / --output: path to the output png file (default: sub-002_ses-2015_csa_plot_before_after_disc_label_correction_smooth10.png next to this script)
     -s / --smooth_window: window size (in slices) for moving-average smoothing of CSA (default 10)
 
 Author: Pierre-Louis Benveniste
@@ -20,21 +21,23 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(SCRIPT_DIR, "critical-ms-lesion", "acute_atrophy_9_subjects"))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, ".."))
 from plot_subject_csa import smooth_csa_columns, plot_csa_panel
 
 SUBJECT_ID = "sub-002"
-BEFORE_LABEL = "Before correction"
-AFTER_LABEL = "After correction"
+SESSION = "2015 (M62)"
+BEFORE_LABEL = "Before disc level correction"
+AFTER_LABEL = "After disc level correction"
+Y_MIN, Y_MAX = 30, 45
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Plot CSA of sub-002 across PAM50 axial slices and vertebral levels, before and after correction.")
+    parser = argparse.ArgumentParser(description="Plot CSA of sub-002 (session 2015, M62) across PAM50 axial slices and vertebral levels, before and after disc level correction.")
     parser.add_argument("--before_csv", type=str, default=os.path.join(SCRIPT_DIR, "csa_with_lesions_before_correction.csv"),
                         help="Path to the per-scan csv before correction.")
     parser.add_argument("--after_csv", type=str, default=os.path.join(SCRIPT_DIR, "csa_with_lesions_after_correction.csv"),
                         help="Path to the per-scan csv after correction.")
-    parser.add_argument("-o", "--output", type=str, default=os.path.join(SCRIPT_DIR, f"{SUBJECT_ID}_csa_plot_before_after_correction_smooth10.png"),
+    parser.add_argument("-o", "--output", type=str, default=os.path.join(SCRIPT_DIR, f"{SUBJECT_ID}_ses-2015_csa_plot_before_after_disc_label_correction_smooth10.png"),
                         help="Path to the output png file.")
     parser.add_argument("-s", "--smooth_window", type=int, default=10,
                         help="Window size (in slices) for moving-average smoothing of CSA before plotting (default 10).")
@@ -58,7 +61,13 @@ def plot_csa_before_after_correction(before_csv, after_csv, output_png, smooth_w
     df = smooth_csa_columns(df, smooth_window, ["CSA_mm2"])
     fig, ax = plt.subplots(figsize=(16, 8))
     plot_csa_panel(ax, df, sessions, palette, "CSA_mm2",
-                   f'CSA across PAM50 axial slices and vertebral levels for {SUBJECT_ID} (before vs after correction)')
+                   f'CSA across PAM50 axial slices and vertebral levels for {SUBJECT_ID} ses-{SESSION} (before vs after disc level correction)')
+
+    # Fix the y limits, and move the vertebral level labels (placed at the previous ymin by
+    # plot_csa_panel) down to the new ymin
+    ax.set_ylim(Y_MIN, Y_MAX)
+    for text in ax.texts:
+        text.set_y(Y_MIN)
 
     output_dir = os.path.dirname(os.path.abspath(output_png))
     os.makedirs(output_dir, exist_ok=True)

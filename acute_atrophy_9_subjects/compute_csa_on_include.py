@@ -47,6 +47,7 @@ import nibabel as nib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
 from detect_critical_lesion import run_sc_segmentation, run_vert_labeling, run_lesion_segmentation, get_lesion_stats, compute_csa
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plots"))
 from plot_subject_csa import plot_subject_csa
 from compute_lesion_level_csa import compute_lesion_level_csa
 from compute_vertebral_level_csa import compute_vertebral_level_csa
