@@ -3,7 +3,7 @@
 Pipeline for measuring spinal cord cross-sectional area (CSA) and lesion-related atrophy,
 in PAM50 template space, across a subject's timepoints.
 
-<img src="https://github.com/user-attachments/assets/d217f8dc-cd41-4570-97e3-c6a390617308" width="800"/>
+<img src="https://github.com/user-attachments/assets/8d08fda8-8c09-4d80-a5bd-1d13276203c5" width="800"/>
 
 Example plot of a subject's CSA across 4 timepoints.
 
