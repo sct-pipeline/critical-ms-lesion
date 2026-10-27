@@ -109,7 +109,7 @@ def plot_csa_panel(ax, df, sessions, palette, csa_column, title):
 
     ax.set_title(title, fontweight='bold', fontsize=LABELS_FONT_SIZE)
     ax.set_xlabel('PAM50 Axial Slice #', fontsize=LABELS_FONT_SIZE)
-    ax.set_ylabel('CSA (mm2)', fontsize=LABELS_FONT_SIZE)
+    ax.set_ylabel('CSA (mm²)', fontsize=LABELS_FONT_SIZE)
     ax.tick_params(axis='both', which='major', labelsize=TICKS_FONT_SIZE)
     ax.legend(loc='upper right', fontsize=TICKS_FONT_SIZE)
 
