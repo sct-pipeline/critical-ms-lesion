@@ -25,9 +25,11 @@ Output columns (one row per session), with each of the following repeated for C1
 Author: Pierre-Louis Benveniste
 """
 import os
+import sys
 import argparse
 import pandas as pd
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plots"))
 from compute_lesion_level_csa import get_common_slices, get_month_labels, CSA_COLUMNS
 from plot_subject_csa import smooth_csa_columns
 

@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(SCRIPT_DIR, "critical-ms-lesion", "acute_atrophy_9_subjects"))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, ".."))
 from plot_subject_csa import smooth_csa_columns, plot_csa_panel
 
 SUBJECT_ID = "sub-002"

@@ -18,7 +18,7 @@ import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "detection"))
 from generate_csa_plot import get_vert_indices, LABELS_FONT_SIZE, TICKS_FONT_SIZE
 
 

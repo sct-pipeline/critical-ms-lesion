@@ -7,11 +7,19 @@ in PAM50 template space, across a subject's timepoints.
 
 Example plot of a subject's CSA across 4 timepoints.
 
+## Folder layout
+
+- `data_preprocessing/` — dataset preparation and segmentation QC (`create_include_json.py`,
+  `generate_qc_sc_segmentation.py`).
+- `plots/` — all plotting scripts (`plot_*.py`), with the figures of specific presentations in
+  `plots/ISBI_paper_figures/` and `plots/toronto_figures/`.
+- The CSA computation scripts (`compute_*.py`, `sensitivity_analysis.py`) stay at the root of this folder.
+
 ## Pipeline
 
-1. **`create_include_json.py`** — scans a BIDS dataset and builds a JSON file listing all
+1. **`data_preprocessing/create_include_json.py`** — scans a BIDS dataset and builds a JSON file listing all
    axial spinal cord scans (cervical/thoracic/lumbar), grouped by subject and session.
-2. **`generate_qc_sc_segmentation.py`** *(optional)* — runs SC segmentation on every scan in
+2. **`data_preprocessing/generate_qc_sc_segmentation.py`** *(optional)* — runs SC segmentation on every scan in
    the include json and produces an aggregated QC report, for visually checking segmentation
    quality before running the full pipeline.
 3. **`compute_csa_on_include.py`** — the main pipeline. For every scan in the include json it
@@ -27,7 +35,7 @@ Example plot of a subject's CSA across 4 timepoints.
 
 These are called internally by `compute_csa_on_include.py`, but can also be run on their own:
 
-- **`plot_subject_csa.py`** — plots CSA vs. PAM50 axial slice for a subject, one colored line
+- **`plots/plot_subject_csa.py`** — plots CSA vs. PAM50 axial slice for a subject, one colored line
   per session (color runs along a viridis scale keyed to session date), with lesion shading
   and vertebral level boundaries. Supports moving-average smoothing (`-s/--smooth_window`).
 - **`compute_lesion_level_csa.py`** — for a subject, finds each continuous lesion area (union of
@@ -35,7 +43,7 @@ These are called internally by `compute_csa_on_include.py`, but can also be run 
   actually share (excluding slices where any session lacks real CSA coverage), and computes
   the AUC of the CSA curve over that range per timepoint, along with the AUC ratio and days
   elapsed since the previous timepoint. Also supports `-s/--smooth_window`.
-- **`plot_native_and_pam50_csa.py`** — plots CSA vs. slice for a single scan in both PAM50 and
+- **`plots/plot_native_and_pam50_csa.py`** — plots CSA vs. slice for a single scan in both PAM50 and
   native slice space, stacked in one figure, from a pair of `sct_process_segmentation` csvs
   (`--csa_native` / `--csa_pam50`).
 - **`sensitivity_analysis.py`** — given a folder of per-subject CSA csvs, runs

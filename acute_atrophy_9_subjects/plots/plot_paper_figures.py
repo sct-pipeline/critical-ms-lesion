@@ -29,11 +29,13 @@ Example:
 Author: Pierre-Louis Benveniste
 """
 import os
+import sys
 import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from plot_subject_csa import plot_csa_panel, smooth_csa_columns
 from compute_lesion_level_csa import parse_session_date
 

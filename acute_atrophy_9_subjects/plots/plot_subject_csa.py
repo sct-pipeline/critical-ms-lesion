@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import seaborn as sns
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "detection"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "detection"))
 from generate_csa_plot import get_vert_indices, LABELS_FONT_SIZE, TICKS_FONT_SIZE
 
 
