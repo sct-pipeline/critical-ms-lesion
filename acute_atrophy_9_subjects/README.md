@@ -1,11 +1,9 @@
 # Acute Atrophy
 
-Pipeline for measuring spinal cord cross-sectional area (CSA) and lesion-related atrophy,
+Pipeline for measuring SC cross-sectional area (CSA) and lesion-level atrophy,
 in PAM50 template space, across a subject's timepoints.
 
 <img src="https://github.com/user-attachments/assets/8d08fda8-8c09-4d80-a5bd-1d13276203c5" width="800"/>
-
-Example plot of a subject's CSA across 4 timepoints.
 
 ## Folder layout
 
